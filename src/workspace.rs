@@ -143,8 +143,15 @@ impl Workspace {
     /// The root is canonicalised so containment checks compare real paths -- on macOS,
     /// `/tmp` is a symlink to `/private/tmp`, and every check below would be wrong without
     /// this.
+    ///
+    /// `dunce::canonicalize` rather than [`Path::canonicalize`], and this is load-bearing on
+    /// Windows: the standard library returns a verbatim path (`\\?\C:\...`), which git
+    /// refuses with `could not create work tree dir ... Invalid argument` -- so every clone
+    /// on Windows fails without it. It must also be the *same* function everywhere in this
+    /// module, or `starts_with` would compare a simplified root against a verbatim path and
+    /// judge every destination to be outside the workspace.
     pub fn at(root: impl AsRef<Path>) -> std::io::Result<Self> {
-        Ok(Self { root: root.as_ref().canonicalize()? })
+        Ok(Self { root: dunce::canonicalize(root)? })
     }
 
     pub fn root(&self) -> &Path {
@@ -210,8 +217,7 @@ impl Workspace {
         }
 
         let (existing, tail) = split_at_existing(&candidate);
-        let mut resolved = existing
-            .canonicalize()
+        let mut resolved = dunce::canonicalize(&existing)
             .map_err(|err| Blocked::Unreadable { reason: err.to_string() })?;
         resolved.extend(tail);
 
@@ -237,7 +243,7 @@ impl Workspace {
 
         // Something is there. Resolve it fully: this is what makes a symlink pointing
         // outside the workspace, or a dangling one, impossible to write through.
-        let real = match destination.canonicalize() {
+        let real = match dunce::canonicalize(destination) {
             Ok(real) => real,
             Err(err) => {
                 return State::Blocked(Blocked::Unreadable { reason: err.to_string() });
@@ -404,7 +410,7 @@ repositories = [{repositories}]
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = dir.path().join("repo");
         std::fs::create_dir_all(repo.join(".git")).expect("create");
-        let real = repo.canonicalize().expect("canonicalize");
+        let real = dunce::canonicalize(&repo).expect("canonicalize");
 
         // Recorded over HTTPS, requested over SSH: the same repository.
         let plan = plan_one(
@@ -427,7 +433,7 @@ repositories = [{repositories}]
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = dir.path().join("repo");
         std::fs::create_dir_all(repo.join(".git")).expect("create");
-        let real = repo.canonicalize().expect("canonicalize");
+        let real = dunce::canonicalize(&repo).expect("canonicalize");
 
         let plan = plan_one(
             dir.path(),
@@ -457,7 +463,7 @@ repositories = [{repositories}]
         let dir = tempfile::tempdir().expect("tempdir");
         let repo = dir.path().join("repo");
         std::fs::create_dir_all(repo.join(".git")).expect("create");
-        let real = repo.canonicalize().expect("canonicalize");
+        let real = dunce::canonicalize(&repo).expect("canonicalize");
 
         let plan =
             plan_one(dir.path(), r#"{ name = "repo" }"#, Origins(vec![(real, "not-a-url".into())]))
@@ -502,7 +508,7 @@ repositories = [{repositories}]
                 .await;
 
         assert_eq!(plan.state, State::Create);
-        assert_eq!(plan.destination, dir.path().canonicalize().unwrap().join("services/api"));
+        assert_eq!(plan.destination, dunce::canonicalize(dir.path()).unwrap().join("services/api"));
     }
 
     #[tokio::test]
@@ -584,6 +590,29 @@ repositories = [{repositories}]
             matches!(plan.state, State::Blocked(Blocked::Unreadable { .. })),
             "{:?}",
             plan.state
+        );
+    }
+
+    /// Regression: `std::fs::canonicalize` yields a Windows verbatim path (`\\?\C:\...`)
+    /// that git refuses outright, which made every clone on Windows fail. The path handed to
+    /// git must never carry that prefix.
+    #[test]
+    fn no_path_uses_the_windows_verbatim_prefix() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let workspace = Workspace::at(dir.path()).expect("workspace");
+
+        let root = workspace.root().to_string_lossy().to_string();
+        assert!(
+            !root.starts_with("\\\\?\\"),
+            "the workspace root must be in a form git accepts, got {root}"
+        );
+
+        let destination =
+            workspace.destination_for(Path::new("qeet-id-server")).expect("should resolve");
+        let destination = destination.to_string_lossy().to_string();
+        assert!(
+            !destination.starts_with("\\\\?\\"),
+            "the destination handed to git must be in a form git accepts, got {destination}"
         );
     }
 

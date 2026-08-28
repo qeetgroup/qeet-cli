@@ -22,6 +22,9 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.6", features = ["derive"] }
+# `std::fs::canonicalize` returns Windows verbatim paths (\\?\C:\...), which git rejects
+# outright. dunce canonicalises to the most compatible form instead.
+dunce = "1.0"
 etcetera = "0.11"
 indicatif = "0.18"
 serde = { version = "1.0", features = ["derive"] }
