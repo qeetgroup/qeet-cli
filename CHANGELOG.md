@@ -6,10 +6,28 @@ All notable changes to Qeet CLI are recorded here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0] — unreleased
+## [0.1.1] — 2026-08-28
 
-First release. Solves one problem: cloning every repository of a Qeet product with one
-command.
+**First published release.** `0.1.0` was developed and tagged nowhere: the distribution
+pipeline landed in this version, and the automatic patch bump that pipeline introduced took
+the version with it. Everything below shipped in `0.1.1`.
+
+Solves one problem: cloning every repository of a Qeet product with one command.
+
+### Distribution
+
+- **Installable at last.** `brew install qeetgroup/tap/qeet`, a POSIX shell installer and a
+  PowerShell installer, all fed from GitHub Releases. Installs to `~/.local/bin`; no root.
+- **Five platforms** — macOS arm64/x86_64, Linux x86_64/arm64, Windows x86_64 — with
+  per-archive and combined SHA-256 checksums, built and published by `cargo-dist` 0.32.0.
+- **Automatic versioning**, following the qeetrix-icons convention: a PR bumps the patch
+  version on its own branch, and merging to `main` releases it. A `vX.Y.Z` tag is created by
+  the GitHub Release itself, so a tag only ever exists for a version whose builds passed.
+- **Format, lint and tests gate the build**, so a tag on a failing commit cannot publish.
+- Every third-party GitHub Action pinned to a commit SHA.
+
+`brew install qeet` is **not** available: homebrew-core requires ≥75 stars / ≥30 forks / ≥30
+watchers and refuses third-party prebuilt binaries. The tap command is the honest one.
 
 ### Added
 
@@ -71,5 +89,5 @@ command.
 service; telemetry; shell completions; a Homebrew tap; JSON output. See
 [docs/decisions.md](docs/decisions.md).
 
-[Unreleased]: https://github.com/qeetgroup/qeet-cli/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/qeetgroup/qeet-cli/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.1

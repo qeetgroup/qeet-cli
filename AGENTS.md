@@ -119,6 +119,13 @@ addition is genuinely warranted: define it in `cli.rs`, thread it through
 
 ## Release
 
-Update `CHANGELOG.md` and `Cargo.toml`, merge to `main` with CI green, then tag `vX.Y.Z`.
-`release.yml` refuses to build if the tag and `Cargo.toml` version disagree. Binaries are
-built in CI, never from a laptop.
+**Read [docs/releasing.md](docs/releasing.md) before touching anything release-related.**
+
+The short version: open a PR, `version.yml` bumps the patch version on your branch, update
+`CHANGELOG.md` in the same PR, merge to `main`. That is the whole trigger — `publish.yml`
+dispatches the release, and the `vX.Y.Z` tag is created by the GitHub Release at the end, so
+a tag only ever exists for a version whose builds passed.
+
+`.github/workflows/release.yml` is **generated** from `dist-workspace.toml` by `cargo-dist`.
+Do not hand-edit it; change the config and run `dist init --yes`. Binaries are built in CI,
+never from a laptop.

@@ -71,19 +71,96 @@ or `dev`, no dependency graph, no remote registry, no backend service, no teleme
 
 ## Installation
 
-### From a release
+### Homebrew (macOS, Linux)
 
-Download the archive for your platform from
-[Releases](https://github.com/qeetgroup/qeet-cli/releases), verify it against `SHA256SUMS`,
-and put `qeet` on your `PATH`.
+```bash
+brew install qeetgroup/tap/qeet
+```
+
+> **This is a temporary command.** The intended end state is `brew install qeet`, which
+> requires [homebrew-core](https://github.com/Homebrew/homebrew-core). Core needs a project
+> to have ≥75 stars, ≥30 forks or ≥30 watchers, and it does not accept third-party prebuilt
+> binaries. Until both are resolved, the tap command above is the real one — `brew install
+> qeet` does **not** work yet.
+
+### macOS / Linux — install script
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://github.com/qeetgroup/qeet-cli/releases/latest/download/qeet-cli-installer.sh | sh
+```
+
+The script detects your OS and architecture, downloads the matching archive, **verifies its
+SHA-256 checksum**, and installs `qeet` to `~/.local/bin` — no root, no `sudo`.
+
+> A shorter `https://get.qeet.in/cli` endpoint is planned and its DNS is in place, but it is
+> **not serving yet**. This README will not document it until it resolves. See
+> [docs/releasing.md](docs/releasing.md#getqeetin).
+
+### Windows — PowerShell
+
+```powershell
+irm https://github.com/qeetgroup/qeet-cli/releases/latest/download/qeet-cli-installer.ps1 | iex
+```
+
+### Verify
+
+```bash
+qeet --version
+```
+
+If that says `command not found`, `~/.local/bin` is not on your `PATH` yet. The installer
+appends a line to `~/.profile`, so open a new shell — or apply it to the current one:
+
+```bash
+. "$HOME/.local/bin/env"
+```
+
+Then clone something:
+
+```bash
+qeet clone id
+```
+
+### Installer options
+
+| Variable | Effect |
+|---|---|
+| `QEET_CLI_INSTALL_DIR` | Install somewhere other than `~/.local/bin` |
+| `QEET_CLI_NO_MODIFY_PATH=1` | Do not touch `~/.profile` — you manage `PATH` yourself |
+| `QEET_CLI_PRINT_VERBOSE=1` | Verbose output |
+
+```bash
+curl -fsSL <installer-url> | QEET_CLI_NO_MODIFY_PATH=1 sh
+```
+
+### Pinning a version
+
+The `latest` URLs always fetch the newest release. For a reproducible install — in CI, for
+example — name the release:
+
+```bash
+curl -fsSL https://github.com/qeetgroup/qeet-cli/releases/download/v0.1.1/qeet-cli-installer.sh | sh
+```
+
+### Manual download
+
+Archives and checksums for every platform are on the
+[Releases](https://github.com/qeetgroup/qeet-cli/releases) page.
 
 | Platform | Archive |
 |---|---|
-| macOS, Apple silicon | `qeet-<version>-aarch64-apple-darwin.tar.gz` |
-| macOS, Intel | `qeet-<version>-x86_64-apple-darwin.tar.gz` |
-| Linux, x86_64 | `qeet-<version>-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux, arm64 | `qeet-<version>-aarch64-unknown-linux-gnu.tar.gz` |
-| Windows, x86_64 | `qeet-<version>-x86_64-pc-windows-msvc.zip` |
+| macOS, Apple silicon | `qeet-cli-aarch64-apple-darwin.tar.xz` |
+| macOS, Intel | `qeet-cli-x86_64-apple-darwin.tar.xz` |
+| Linux, x86_64 | `qeet-cli-x86_64-unknown-linux-gnu.tar.xz` |
+| Linux, arm64 | `qeet-cli-aarch64-unknown-linux-gnu.tar.xz` |
+| Windows, x86_64 | `qeet-cli-x86_64-pc-windows-msvc.zip` |
+
+Verify before running it:
+
+```bash
+sha256sum -c qeet-cli-aarch64-apple-darwin.tar.xz.sha256
+```
 
 ### From source
 
