@@ -13,7 +13,6 @@ name: Publish
 #   3. `release.yml` validates (format, lint, test), builds all five targets, then creates
 #      the GitHub Release -- which is what creates the `vX.Y.Z` tag. So a tag only ever
 #      exists for a version whose builds actually passed.
-#   4. The Homebrew formula is pushed to qeetgroup/homebrew-tap on success.
 #
 # Re-running is safe: if the version in Cargo.toml is already released, everything below is
 # skipped, so merging a PR that did not change the version does nothing.
@@ -21,6 +20,11 @@ name: Publish
 # Why a dispatch rather than pushing a tag: a tag pushed with GITHUB_TOKEN does not trigger
 # another workflow, whereas workflow_dispatch always does. Documented at
 # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow
+#
+# The `release` job declares a GitHub environment, which is what makes releases appear under
+# the repository's Deployments / Environments panel -- the same way qeetrix-icons uses
+# `npm-publish` and qeet-notify-server uses `production`. Add required reviewers to that
+# environment if releases should be gated on a human.
 
 on:
   push:
@@ -35,18 +39,21 @@ permissions:
   contents: read
 
 jobs:
-  publish:
+  # Split from `release` so a deployment record is only created when something is actually
+  # being released, rather than on every merge.
+  check:
+    name: Is there anything to release?
     runs-on: ubuntu-latest
-    permissions:
-      contents: read # read Cargo.toml and existing tags
-      actions: write # dispatch release.yml
+    outputs:
+      release: ${{ steps.version.outputs.release }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history, so existing tags are visible
 
       - id: version
-        name: Is there anything to release?
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -75,19 +82,45 @@ jobs:
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Dispatch the release
-        if: steps.version.outputs.release == 'true'
+      - name: Summary
+        env:
+          V: ${{ steps.version.outputs.version }}
+          R: ${{ steps.version.outputs.release }}
+        run: |
+          if [ "$R" = "true" ]; then
+            echo "### Releasing \`v$V\` :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### \`v$V\` is already released — nothing to do" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Bump the version in a PR to ship a new one." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  release:
+    name: Dispatch release ${{ needs.check.outputs.tag }}
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    # Surfaces the release in the repository's Deployments / Environments panel, and links
+    # it to the GitHub Release the run produces.
+    environment:
+      name: release
+      url: https://github.com/${{ github.repository }}/releases/tag/${{ needs.check.outputs.tag }}
+    permissions:
+      contents: read
+      actions: write # dispatch release.yml
+    steps:
+      - name: Dispatch release.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.check.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh workflow run release.yml --ref "$GITHUB_REF_NAME" --field "tag=$TAG"
+          gh workflow run release.yml --repo "$REPO" --ref "$GITHUB_REF_NAME" --field "tag=$TAG"
           echo "Dispatched release.yml for $TAG."
-          echo "Watch it: gh run list --workflow=release.yml"
-
-      - name: Nothing to do
-        if: steps.version.outputs.release != 'true'
-        run: |
-          echo "Version ${{ steps.version.outputs.version }} is already released."
-          echo "Bump the version in a PR to ship a new one."
+          {
+            echo "### Dispatched \`release.yml\` for \`$TAG\`"
+            echo ""
+            echo "It validates, builds all five targets, then creates the GitHub Release —"
+            echo "which is what creates the \`$TAG\` tag."
+          } >> "$GITHUB_STEP_SUMMARY"
