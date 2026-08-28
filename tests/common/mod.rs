@@ -35,8 +35,12 @@ impl Fixture {
     }
 
     /// The workspace path, resolved the same way `qeet` resolves it.
+    ///
+    /// `dunce`, not `std::fs::canonicalize`, and deliberately: std returns a Windows verbatim
+    /// path (`\\?\C:\...`) while qeet uses `dunce`, so canonicalising differently here
+    /// would compare two spellings of the same path and fail on Windows only.
     pub fn work(&self) -> PathBuf {
-        self.work.canonicalize().expect("canonicalize workspace")
+        dunce::canonicalize(&self.work).expect("canonicalize workspace")
     }
 
     /// Create a bare repository with one commit on `main`, plus the extra branches given.
@@ -128,10 +132,8 @@ impl Fixture {
 
 /// A `file://` URL for a local path, correct on Windows as well as Unix.
 pub fn file_url(path: &Path) -> String {
-    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let resolved = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let text = resolved.to_string_lossy().replace('\\', "/");
-    // Windows canonicalisation yields a `\\?\C:\...` verbatim prefix, which is not a URL.
-    let text = text.trim_start_matches("//?/").to_string();
     if text.starts_with('/') { format!("file://{text}") } else { format!("file:///{text}") }
 }
 
