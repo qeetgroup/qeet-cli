@@ -6,6 +6,19 @@ All notable changes to Qeet CLI are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-08-28
+
+### Changed
+
+- **README is now visual.** Four Mermaid flowcharts — the clone pipeline, the workspace
+  preflight decision tree, manifest source precedence, and the release flow — replace prose
+  that asked the reader to hold a diagram in their head. Live badges replace static ones, so
+  release, downloads, last-commit and CI state reflect reality.
+- Dropped the problem/solution narrative in favour of a compact overview. The rationale still
+  lives in [docs/architecture.md](docs/architecture.md), where it belongs.
+- The platform table now distinguishes "built in CI" from "manually tested", rather than
+  implying every target was run by hand.
+
 ## [0.1.2] — 2026-08-28
 
 ### Fixed
@@ -111,6 +124,7 @@ watchers and refuses third-party prebuilt binaries. The tap command is the hones
 service; telemetry; shell completions; a Homebrew tap; JSON output. See
 [docs/decisions.md](docs/decisions.md).
 
-[Unreleased]: https://github.com/qeetgroup/qeet-cli/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/qeetgroup/qeet-cli/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.3
 [0.1.2]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.2
 [0.1.1]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.1
