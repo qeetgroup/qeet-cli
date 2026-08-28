@@ -21,8 +21,7 @@ qeet clone id
 
 ## Contents
 
-- [The problem](#the-problem)
-- [The solution](#the-solution)
+- [Overview](#overview)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Workspace layout](#workspace-layout)
@@ -36,26 +35,11 @@ qeet clone id
 
 ---
 
-## The problem
+## Overview
 
-Qeet Group operates a polyrepo architecture in which a single product may consist of
-multiple repositories.
-
-The operational unit for developers is the **product**. Git's operational unit is the
-**individual repository**. Onboarding onto Qeet ID means twelve `git clone` commands, run by
-hand, one after another:
-
-```bash
-git clone git@github.com:qeetgroup/qeet-id-server.git
-git clone git@github.com:qeetgroup/qeet-id-console.git
-git clone git@github.com:qeetgroup/qeet-id-login.git
-# ...nine more, and you have to know what they are
-```
-
-Repetitive, easy to get wrong, easy to leave half-done, and slower than it needs to be
-because each clone waits for the last.
-
-## The solution
+Qeet CLI resolves a product to its repositories from a data-driven manifest and clones them
+**concurrently**, with a bounded number of git processes at a time. It **orchestrates** git —
+it does not replace it, reimplement it, or manage credentials for it.
 
 ```console
 $ qeet clone id
@@ -80,24 +64,18 @@ Qeet ID: 12 of 12 repositories in 5.4s.
   Failed:          0
 ```
 
-Repositories are resolved from a data-driven manifest and cloned **concurrently**, with a
-bounded number of git processes at a time.
-
-Qeet CLI **orchestrates** git. It does not replace it, reimplement it, or manage credentials
-for it.
-
 | | |
 |---|---|
 | **One command** | `qeet clone <product>` instead of up to twelve `git clone`s |
 | **Concurrent** | ~4× faster than sequential, measured on a six-repository product |
 | **Safe** | Nothing existing is ever deleted or overwritten; re-runs are a no-op |
-| **Honest** | Real git errors, classified, with concrete next steps — never `exit code 128` |
+| **Honest errors** | Real git output, classified, with concrete next steps — never `exit code 128` |
 | **Local-first** | No backend, no telemetry, no network call to resolve a product |
 
-### What it does not do
+### Scope
 
-v1 solves one problem well. There is deliberately no `qeet status`, `pull`, `sync`, `graph`
-or `dev`, no dependency graph, no remote registry, no backend service, and no telemetry. See
+v1 does one thing. There is deliberately no `qeet status`, `pull`, `sync`, `graph` or `dev`,
+no dependency graph, no remote registry, no backend service, and no telemetry. See
 [docs/decisions.md](docs/decisions.md) for what is deferred and why.
 
 ---
