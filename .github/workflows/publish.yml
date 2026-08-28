@@ -1,0 +1,93 @@
+name: Publish
+
+# Starts a release on merge to main. This is the entry point of the release flow; the heavy
+# lifting is in the dist-generated `release.yml`.
+#
+# The flow end to end:
+#
+#   1. Open a PR. `version.yml` bumps the patch version on your branch, so the version you
+#      are about to ship is visible in the PR diff. Want a minor or major? Set it by hand in
+#      Cargo.toml and the bump leaves it alone.
+#   2. Merge to main. This workflow reads Cargo.toml and, if that version has not been
+#      released yet, dispatches `release.yml` with the tag `vX.Y.Z`.
+#   3. `release.yml` validates (format, lint, test), builds all five targets, then creates
+#      the GitHub Release -- which is what creates the `vX.Y.Z` tag. So a tag only ever
+#      exists for a version whose builds actually passed.
+#   4. The Homebrew formula is pushed to qeetgroup/homebrew-tap on success.
+#
+# Re-running is safe: if the version in Cargo.toml is already released, everything below is
+# skipped, so merging a PR that did not change the version does nothing.
+#
+# Why a dispatch rather than pushing a tag: a tag pushed with GITHUB_TOKEN does not trigger
+# another workflow, whereas workflow_dispatch always does. Documented at
+# https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # read Cargo.toml and existing tags
+      actions: write # dispatch release.yml
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history, so existing tags are visible
+
+      - id: version
+        name: Is there anything to release?
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::could not read a version from Cargo.toml (got '$version')"
+            exit 1
+          fi
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Cargo.toml version: $version -> tag $tag"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already released — nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            # A tag with no release means a previous attempt died partway. Releasing again
+            # would be ambiguous, so stop and let a human decide.
+            echo "::error::Tag $tag exists but has no GitHub Release. Resolve by hand — see docs/releasing.md."
+            exit 1
+          else
+            echo "$tag is new — releasing."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch the release
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run release.yml --ref "$GITHUB_REF_NAME" --field "tag=$TAG"
+          echo "Dispatched release.yml for $TAG."
+          echo "Watch it: gh run list --workflow=release.yml"
+
+      - name: Nothing to do
+        if: steps.version.outputs.release != 'true'
+        run: |
+          echo "Version ${{ steps.version.outputs.version }} is already released."
+          echo "Bump the version in a PR to ship a new one."

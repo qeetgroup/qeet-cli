@@ -213,21 +213,115 @@ gives identical semantics with one less dependency.
 `num_cpus` is unnecessary — `std::thread::available_parallelism()` is in the standard library.
 `strsim` is unnecessary — the "did you mean" suggestion is twenty lines of Levenshtein.
 
-## ADR-014 — Hand-written release workflow rather than cargo-dist
+## ADR-014 — cargo-dist for the release pipeline and installers
 
-`cargo-dist` was evaluated and is healthy (v0.32.0, May 2026; repository active). It was not
-adopted for two reasons.
+**Superseded 2026-08-28.** This ADR originally recorded a decision to hand-write the release
+pipeline and reject `cargo-dist`. That decision has been reversed. The original reasoning is
+kept below rather than deleted, because the way it failed is the useful part.
 
-First, Qeet Group engineering standards require third-party GitHub Actions to be pinned to a
-commit SHA. `cargo-dist` generates a workflow it owns, which must be regenerated on version
-bumps and does not pin that way.
+### What was originally decided, and why it was wrong
 
-Second, the release requirements here are modest — five targets, archives, checksums, a
-GitHub Release — and a fifty-line workflow that a reviewer can read end to end is worth more
-than a generated one that has to be kept in sync.
+Two reasons were given for rejecting cargo-dist:
 
-The workflow refuses to build if the git tag and `Cargo.toml` version disagree, so versioning
-cannot drift. Shell installer scripts and a Homebrew tap are **deferred, not done**.
+| Original claim | Status |
+|---|---|
+| "does not pin third-party Actions to a commit SHA" | **Factually wrong.** `[dist.github-action-commits]`, available since cargo-dist 0.29.0, pins any Action to a commit SHA. The organization's requirement was always satisfiable. |
+| "the release requirements here are modest — five targets, archives, checksums" | **Correct at the time, then obsolete.** The requirement became three installers plus automated Homebrew tap publishing. |
+
+The first was a research failure: a capability was asserted absent without checking the
+configuration reference. The second was not an error but a scope that changed. Both are worth
+distinguishing, because only one of them is a lesson.
+
+### What is decided now
+
+`cargo-dist` 0.32.0 owns the release pipeline. It builds all five targets, produces archives
+and checksums, generates the shell and PowerShell installers, and publishes the Homebrew
+formula to a tap.
+
+The decisive argument is security, not convenience. Hand-rolling meant roughly 300 lines of
+new shell, PowerShell and Ruby sitting directly on the download-and-verify path — the most
+security-sensitive code in the project, written once and exercised rarely. cargo-dist's
+installers already do platform detection, checksum verification, PATH handling and an
+opt-out, and are exercised by thousands of projects. Writing that by hand would have traded a
+dependency for a much worse risk.
+
+Organization standards are still met: `[dist.github-action-commits]` pins every third-party
+Action, and the generated workflow is committed and reviewed like any other file.
+
+### Residual risk, recorded rather than glossed
+
+`opensource.axo.dev` — cargo-dist's documentation site — no longer resolves. The tool itself
+is actively maintained (0.32.0 in May 2026, repository pushed 2026-08-28) and the
+documentation source lives in the repository, but a vendor with a dark documentation site is a
+supply-chain consideration.
+
+Mitigations: `Cargo.lock` is committed; the generated workflow is committed, so a cargo-dist
+outage cannot break an existing release; and the hand-written pipeline this replaced remains
+in git history if it ever has to be recovered.
+
+## ADR-016 — Install to `~/.local/bin`, and the shell-profile tradeoff
+
+cargo-dist's default `install-path` is `CARGO_HOME`, which assumes a Rust toolchain. Qeet
+developers write Go, TypeScript, Java, Kotlin and Python; most will not have `~/.cargo/bin`.
+So `install-path = "~/.local/bin"` — user-level, no root or administrator required.
+
+That choice has a consequence worth stating plainly. `~/.local/bin` is not on `PATH` by
+default on macOS, so the installer appends `. ~/.local/bin/env` to `~/.profile`, the same
+mechanism rustup uses.
+
+The distribution specification asks not to modify shell startup files "unless absolutely
+necessary". Here it is necessary: an installed binary the user cannot invoke is not installed.
+The behaviour is narrow — only `~/.profile`, only when the line is absent, and it reports what
+it did — and it can be declined entirely:
+
+```bash
+curl -fsSL <installer> | INSTALLER_NO_MODIFY_PATH=1 sh
+```
+
+Documented in the README rather than left to be discovered.
+
+## ADR-017 — Homebrew: a staging tap, and an honest final target
+
+The desired end state is `brew install qeet`. That requires homebrew-core, and homebrew-core
+is not currently reachable:
+
+| Gate | Requirement | qeet-cli |
+|---|---|---|
+| Notability | ≥75 stars, or ≥30 forks, or ≥30 watchers | 0 / 0 / 0 |
+| Build source | Must build from source; core refuses third-party prebuilt binaries | ships prebuilt binaries |
+
+So `qeetgroup/homebrew-tap` serves `brew install qeetgroup/tap/qeet` in the meantime.
+
+**The staging command is never presented as the final one.** Documentation states both, marks
+the tap as temporary, and does not claim `brew install qeet` works until it resolves. A README
+that promises a command which fails is worse than one that admits a limitation.
+
+Note also that a core formula would build from source, so reaching the final target is not
+only a popularity threshold — it is a different formula.
+
+## ADR-018 — get.qeet.in on Vercel, not Cloudflare
+
+The distribution specification expressed a preference for Cloudflare Workers or Pages. That
+preference was not followed, and the reason is infrastructure rather than taste.
+
+`qeet.in` runs on GoDaddy nameservers (`ns55`/`ns56.domaincontrol.com`), and every Qeet
+property — `qeet.in`, `docs.qeet.in`, `id.qeet.in` — is served by Vercel. There is no
+Cloudflare zone. A Workers custom domain requires the zone to be on Cloudflare, so following
+the preference would have meant migrating DNS for every Qeet site — which the same
+specification forbids ("do not modify unrelated Qeet DNS records"). The narrower instruction
+wins over the broader preference.
+
+`get.qeet.in` is therefore a Vercel project that **redirects** rather than serves:
+
+```text
+get.qeet.in/cli      →  releases/latest/download/<installer>.sh
+get.qeet.in/cli.ps1  →  releases/latest/download/<installer>.ps1
+```
+
+Redirecting rather than copying means the script can never drift from the release it
+installs, and `curl -fsSL` already follows redirects. GitHub Releases stays the single
+canonical source of artifacts: no backend, no database, no download service, no binary
+storage.
 
 ## ADR-015 — Manifest data is real, and public by explicit approval
 
