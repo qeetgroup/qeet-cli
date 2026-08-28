@@ -683,7 +683,14 @@ repositories = [{ name = "qeet-id-server" }, { name = "qeet-id-console" }]
         let dir = tempfile::tempdir().expect("tempdir");
         let plan = plan_one(dir.path(), r#"{ name = "qeet-docs" }"#, Origins(vec![])).await;
         assert_eq!(plan.display, "qeet-docs");
-        assert_eq!(plan.destination.parent(), Some(dir.path().canonicalize().unwrap().as_path()));
+
+        // Compared against the root the workspace itself computed, not a second
+        // canonicalisation of the same directory. `std::fs::canonicalize` returns a Windows
+        // verbatim path (\\?\C:\...) while production uses `dunce::canonicalize`, so
+        // canonicalising independently here compares two different spellings of one path --
+        // which is exactly how this test failed on Windows and nowhere else.
+        let workspace = Workspace::at(dir.path()).expect("workspace");
+        assert_eq!(plan.destination.parent(), Some(workspace.root()));
     }
 
     /// A `path` override is relative to the group directory, so grouping always holds.

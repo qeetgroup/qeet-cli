@@ -1,6 +1,6 @@
 [package]
 name = "qeet-cli"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.87"
 description = "Product-aware CLI for Qeet Group's polyrepo organization: clone every repository of a product with one command."
@@ -47,6 +47,9 @@ tokio = { version = "1.53", features = [
 
 [dev-dependencies]
 assert_cmd = "2.2"
+# Same canonicalisation production uses, so fixtures cannot compare a verbatim Windows
+# path against a simplified one. See tests/common/mod.rs.
+dunce = "1.0"
 predicates = "3.1"
 tempfile = "3.27"
 # `test-util` provides the paused clock the retry-backoff tests use, so they assert the
