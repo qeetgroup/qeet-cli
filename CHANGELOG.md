@@ -6,6 +6,28 @@ All notable changes to Qeet CLI are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-08-28
+
+### Fixed
+
+- **Documentation accuracy.** The README and ADR-016 claimed the install script touches only
+  `~/.profile`. Testing the published installer against a sandboxed `HOME` showed it writes
+  three shell configurations — `~/.profile`, `~/.zshrc` and
+  `~/.config/fish/conf.d/` — plus an install receipt. Both documents now list every path.
+
+### Added
+
+- Releases now appear in the repository's **Deployments** panel, via a `release` environment
+  on the publish job, matching how other Qeet repositories surface deployments.
+- README: badges, contents, collapsible troubleshooting, measured concurrency figures, and a
+  table of exactly what the install script writes.
+
+### Verified
+
+- Checksum verification **fails closed** — a byte-corrupted archive aborts the install.
+- The Homebrew formula carries `sha256` for all four Unix targets.
+- Known gap: the formula has no `test do` block, so `brew test qeet` reports "defines no test".
+
 ## [0.1.1] — 2026-08-28
 
 **First published release.** `0.1.0` was developed and tagged nowhere: the distribution
@@ -89,5 +111,6 @@ watchers and refuses third-party prebuilt binaries. The tap command is the hones
 service; telemetry; shell completions; a Homebrew tap; JSON output. See
 [docs/decisions.md](docs/decisions.md).
 
-[Unreleased]: https://github.com/qeetgroup/qeet-cli/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/qeetgroup/qeet-cli/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.2
 [0.1.1]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.1

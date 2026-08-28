@@ -265,20 +265,40 @@ cargo-dist's default `install-path` is `CARGO_HOME`, which assumes a Rust toolch
 developers write Go, TypeScript, Java, Kotlin and Python; most will not have `~/.cargo/bin`.
 So `install-path = "~/.local/bin"` — user-level, no root or administrator required.
 
-That choice has a consequence worth stating plainly. `~/.local/bin` is not on `PATH` by
-default on macOS, so the installer appends `. ~/.local/bin/env` to `~/.profile`, the same
-mechanism rustup uses.
+That choice has a consequence worth stating plainly, and the first version of this ADR got
+it wrong. `~/.local/bin` is not on `PATH` by default on macOS, so the installer adds
+`. "$HOME/.local/bin/env"` to shell startup files.
+
+**Corrected after testing the published installer.** This ADR originally claimed the
+installer touches "only `~/.profile`", quoting cargo-dist's own documentation, which says it
+"opted to start conservative with just .profile". That documentation is stale. A real run
+against the v0.1.1 release, with `HOME` sandboxed, writes:
+
+| Path | |
+|---|---|
+| `~/.local/bin/env`, `~/.local/bin/env.fish` | created — idempotent `PATH` prepend |
+| `~/.profile` | `. "$HOME/.local/bin/env"` appended |
+| `~/.zshrc` | same line appended |
+| `~/.config/fish/conf.d/qeet-cli.env.fish` | fish equivalent created |
+| `~/.config/qeet-cli/qeet-cli-receipt.json` | install receipt |
+
+Three shell configurations, not one. That is materially more invasive than what was
+documented, so the README now lists every path rather than describing it as narrow.
 
 The distribution specification asks not to modify shell startup files "unless absolutely
-necessary". Here it is necessary: an installed binary the user cannot invoke is not installed.
-The behaviour is narrow — only `~/.profile`, only when the line is absent, and it reports what
-it did — and it can be declined entirely:
+necessary". Here it is necessary — an installed binary the user cannot invoke is not
+installed — and the edits are idempotent and only applied when absent. But "necessary" does
+not excuse being vague about scope, which is why the table above exists.
+
+It can be declined entirely:
 
 ```bash
-curl -fsSL <installer> | INSTALLER_NO_MODIFY_PATH=1 sh
+curl -fsSL <installer> | QEET_CLI_NO_MODIFY_PATH=1 sh
 ```
 
-Documented in the README rather than left to be discovered.
+Verified end to end: checksum verification runs (and **fails closed** — tested by serving a
+byte-corrupted archive, which aborted the install with `checksum mismatch` and installed
+nothing), the binary lands in `~/.local/bin`, and `qeet clone` works from it.
 
 ## ADR-017 — Homebrew: a staging tap, and an honest final target
 
@@ -298,6 +318,21 @@ that promises a command which fails is worse than one that admits a limitation.
 
 Note also that a core formula would build from source, so reaching the final target is not
 only a popularity threshold — it is a different formula.
+
+### A known gap: the formula has no test block
+
+cargo-dist's formula template emits no `test do` block, so `brew test qeet` reports
+`defines no test`. Verified against the real v0.1.1 formula.
+
+The specification asks for "an appropriate test", so this is a genuine gap rather than a
+preference. It is left open deliberately: hand-adding a test to the tap would create a
+formula that differs from the release artifact and would be silently overwritten the moment
+automatic publishing is enabled. The fix belongs in the same place as the attribution fix — a
+custom publish job that post-processes the generated formula — and homebrew-core will require
+a hand-written from-source formula with a test block anyway.
+
+The formula does carry `sha256` for all four Unix targets, matching the checksums baked into
+the shell installer.
 
 ## ADR-018 — get.qeet.in on Vercel, not Cloudflare
 

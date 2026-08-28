@@ -176,8 +176,13 @@ Then uncomment `publish-jobs` in `dist-workspace.toml` and run `dist init --yes`
 
 ## get.qeet.in
 
-The install endpoint redirects to the latest release's installer, so the script can never
-drift from the release it installs.
+**Entirely optional.** Both install paths already work without it —
+`brew install qeetgroup/tap/qeet` and the GitHub Releases installer URL. `get.qeet.in` buys a
+shorter command and nothing else. If it is never set up, remove this section and
+`install/`; nothing else depends on it.
+
+The endpoint redirects to the latest release's installer, so the script can never drift from
+the release it installs.
 
 ```text
 get.qeet.in/cli      →  releases/latest/download/qeet-cli-installer.sh
