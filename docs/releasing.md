@@ -57,6 +57,18 @@ gh workflow run release.yml --ref main --field tag=v0.1.1
 The `tag` input defaults to `dry-run`, which plans and builds but does not publish — useful
 for checking the pipeline without shipping anything.
 
+### The validation gate covers every platform, deliberately
+
+`validate.yml` runs format and lint once, then the **full test suite on Linux, macOS and
+Windows**. `build-local-artifacts` depends on it, so nothing is built and no tag is created
+unless all three pass.
+
+It was ubuntu-only until v0.2.0, and that cost something worth recording: a test that failed
+**only on Windows** — a path comparison, which is the one class of thing that behaves
+differently there — passed the gate and v0.2.0 was released. The shipped binaries were fine,
+because the failure was in a test rather than in shipped code, but the gate had not delivered
+what it claimed. Testing on one platform is not a gate for a tool that ships five binaries.
+
 ### Deployments and the `release` environment
 
 `publish.yml`'s `release` job declares a GitHub [environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
