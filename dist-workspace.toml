@@ -1,0 +1,41 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# The installers to generate for each app
+installers = ["shell", "powershell", "homebrew"]
+# Customize the Homebrew formula name
+formula = "qeet"
+# A GitHub repo to push Homebrew formulas to
+tap = "qeetgroup/homebrew-tap"
+# Path that installers should place binaries in
+install-path = "~/.local/bin"
+# Whether CI should trigger releases with dispatches instead of tag pushes
+dispatch-releases = true
+# Plan jobs to run in CI
+plan-jobs = ["./validate"]
+# Whether to install an updater program
+install-updater = false
+
+# GitHub's native arm64 Linux runner, free for public repositories. Building natively beats
+# cross-compiling: no cross linker, and the binary is exercised on the architecture it
+# targets.
+[dist.github-custom-runners]
+aarch64-unknown-linux-gnu = "ubuntu-24.04-arm"
+
+# Qeet Group engineering standards require third-party GitHub Actions to be pinned to a
+# commit SHA. Without this block dist would emit floating tags. Refresh with:
+#   gh api repos/<owner>/<repo>/commits/<ref> --jq .sha
+[dist.github-action-commits]
+"actions/checkout" = "11d5960a326750d5838078e36cf38b85af677262"           # v4
+"actions/upload-artifact" = "ea165f8d65b6e75b540449e92b4886f43607fa02"    # v4
+"actions/download-artifact" = "d3f86a106a0bac45b974a628896c90dbdf5c8093"  # v4
+"swatinem/rust-cache" = "6323deb102c322ba6fcbdcafc7e3dddab59af2b6"        # v2
+"actions/attest-build-provenance" = "ef244123eb79f2f7a7e75d99086184180e6d0018" # v1

@@ -1,6 +1,6 @@
 [package]
 name = "qeet-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.87"
 description = "Product-aware CLI for Qeet Group's polyrepo organization: clone every repository of a product with one command."
@@ -11,7 +11,7 @@ homepage = "https://github.com/qeetgroup/qeet-cli"
 readme = "README.md"
 keywords = ["cli", "git", "clone", "polyrepo", "monorepo"]
 categories = ["command-line-utilities", "development-tools"]
-exclude = ["/.github", "/docs", "/scripts", "/tests"]
+exclude = ["/.github", "/docs", "/install", "/tests"]
 
 # The binary is `qeet`, not `qeet-cli`: the package name follows the Qeet Group repository
 # naming convention, the command name is what a developer types.
@@ -60,6 +60,11 @@ tokio = { version = "1.53", features = [
 [profile.release]
 lto = "thin"
 strip = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
 
 [lints.rust]
 unsafe_code = "forbid"
