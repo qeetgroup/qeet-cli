@@ -33,7 +33,22 @@ pub struct Manifest {
 pub struct Product {
     /// Display name, e.g. "Qeet ID".
     pub name: String,
+    /// Directory the product's repositories are grouped under, relative to the workspace --
+    /// e.g. `qeet-id`, giving `qeet-id/qeet-id-server`.
+    ///
+    /// Optional, and absent means flat: the repositories land directly in the workspace. That
+    /// is deliberate rather than an oversight -- organization-level repositories such as
+    /// `qeet-docs` and `qeet-apis` belong at the top of a workspace, not nested one deeper.
+    #[serde(default)]
+    pub directory: Option<String>,
     pub repositories: Vec<RepositoryEntry>,
+}
+
+impl Product {
+    /// The grouping directory, if this product has one.
+    pub fn group_dir(&self) -> Option<&str> {
+        self.directory.as_deref().filter(|dir| !dir.trim().is_empty())
+    }
 }
 
 /// One repository within a product.

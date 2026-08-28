@@ -1,21 +1,18 @@
 <div align="center">
 
-<h1>Qeet CLI</h1>
+# Qeet CLI
 
-<p><b>Clone every repository belonging to a Qeet product with one command.</b></p>
+**Clone every repository belonging to a Qeet product with one command.**
 
-<p>
-<a href="https://github.com/qeetgroup/qeet-cli/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/qeetgroup/qeet-cli/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white"></a>
-<a href="https://github.com/qeetgroup/qeet-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/qeetgroup/qeet-cli?label=release&color=blue&logo=github"></a>
-<a href="https://github.com/qeetgroup/qeet-cli/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/qeetgroup/qeet-cli/total?label=downloads&color=success"></a>
-<a href="https://github.com/qeetgroup/qeet-cli/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/qeetgroup/qeet-cli?label=last%20commit"></a>
-<a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/qeetgroup/qeet-cli?color=green"></a>
-<img alt="Rust" src="https://img.shields.io/badge/rust-1.87%2B-orange?logo=rust&logoColor=white">
-<img alt="Platforms" src="https://img.shields.io/badge/macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-supported-lightgrey">
-</p>
+[![CI](https://github.com/qeetgroup/qeet-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/qeetgroup/qeet-cli/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/qeetgroup/qeet-cli?label=release&color=blue)](https://github.com/qeetgroup/qeet-cli/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](#installation)
+[![Rust](https://img.shields.io/badge/rust-1.87%2B-orange.svg)](Cargo.toml)
 
 ```bash
-brew install qeetgroup/tap/qeet && qeet clone id
+brew install qeetgroup/tap/qeet
+qeet clone id
 ```
 
 </div>
@@ -24,12 +21,17 @@ brew install qeetgroup/tap/qeet && qeet clone id
 
 ## Contents
 
-| | | |
-|---|---|---|
-| [Overview](#overview) | [Installation](#installation) | [Usage](#usage) |
-| [How it works](#how-it-works) | [Workspace layout](#workspace-layout) | [Concurrency](#concurrency) |
-| [Authentication](#authentication) | [Manifest format](#manifest-format) | [Exit codes](#exit-codes) |
-| [Troubleshooting](#troubleshooting) | [Development](#development) | [Limitations](#limitations) |
+- [Overview](#overview)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Workspace layout](#workspace-layout)
+- [Concurrency](#concurrency)
+- [Authentication](#authentication)
+- [Manifest format](#manifest-format)
+- [Exit codes](#exit-codes)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Limitations](#limitations)
 
 ---
 
@@ -62,57 +64,19 @@ Qeet ID: 12 of 12 repositories in 5.4s.
   Failed:          0
 ```
 
-### Before and after
-
-| | Without Qeet CLI | With Qeet CLI |
-|---|---|---|
-| Commands to type | up to 12 `git clone`s | **1** |
-| Do you need the repo list? | yes, from memory or a wiki | no, it ships in the binary |
-| Execution | sequential | **concurrent, bounded** |
-| Wall time, 6 repositories | 8.7s | **2.1s** |
-| Safe to re-run? | you get "already exists" errors | yes — reports "already present", exits `0` |
-| A repo you cannot access | stops you mid-way | others still clone, one clear report at the end |
-
-<table>
-<tr><td><b>One command</b></td><td><code>qeet clone &lt;product&gt;</code> instead of up to twelve <code>git clone</code>s</td></tr>
-<tr><td><b>Concurrent</b></td><td>~4× faster than sequential, measured on a six-repository product</td></tr>
-<tr><td><b>Safe</b></td><td>Nothing existing is ever deleted or overwritten; re-runs are a no-op</td></tr>
-<tr><td><b>Honest errors</b></td><td>Real git output, classified, with concrete next steps — never <code>exit code 128</code></td></tr>
-<tr><td><b>Local-first</b></td><td>No backend, no telemetry, no network call to resolve a product</td></tr>
-</table>
+| | |
+|---|---|
+| **One command** | `qeet clone <product>` instead of up to twelve `git clone`s |
+| **Concurrent** | ~4× faster than sequential, measured on a six-repository product |
+| **Safe** | Nothing existing is ever deleted or overwritten; re-runs are a no-op |
+| **Honest errors** | Real git output, classified, with concrete next steps — never `exit code 128` |
+| **Local-first** | No backend, no telemetry, no network call to resolve a product |
 
 ### Scope
 
 v1 does one thing. There is deliberately no `qeet status`, `pull`, `sync`, `graph` or `dev`,
 no dependency graph, no remote registry, no backend service, and no telemetry. See
 [docs/decisions.md](docs/decisions.md) for what is deferred and why.
-
----
-
-## How it works
-
-Everything that can fail cheaply fails **before** anything expensive or destructive happens.
-By the time the first git process starts, the manifest is valid, the product exists, git
-works, and every destination has been classified.
-
-```mermaid
-flowchart LR
-    CMD["qeet clone id"] --> MAN["manifest<br/>resolve + validate"]
-    MAN --> PROD["product<br/>12 repositories"]
-    PROD --> GIT["git --version<br/>checked once"]
-    GIT --> PRE["preflight<br/>every destination"]
-    PRE --> POOL{"bounded pool<br/>max 8 at once"}
-    POOL --> C1["git clone<br/>qeet-id-server"]
-    POOL --> C2["git clone<br/>qeet-id-console"]
-    POOL --> C3["git clone<br/>+ 10 more"]
-    C1 --> AGG["aggregate results"]
-    C2 --> AGG
-    C3 --> AGG
-    AGG --> SUM["summary<br/>+ exit code"]
-```
-
-A repository that fails never cancels one still running, and every repository appears in the
-final report.
 
 ---
 
@@ -126,10 +90,10 @@ brew install qeetgroup/tap/qeet
 
 > [!IMPORTANT]
 > **This is a temporary command.** The intended end state is `brew install qeet`, which needs
-> [homebrew-core](https://github.com/Homebrew/homebrew-core). Core requires **≥75 stars, ≥30
-> forks or ≥30 watchers**, and it does not accept third-party prebuilt binaries — a core
-> formula must build from source. Until both are resolved, the tap command above is the real
-> one. **`brew install qeet` does not work yet.**
+> [homebrew-core](https://github.com/Homebrew/homebrew-core). Core requires a project to have
+> **≥75 stars, ≥30 forks or ≥30 watchers**, and it does not accept third-party prebuilt
+> binaries — a core formula must build from source. Until both are resolved, the tap command
+> above is the real one. **`brew install qeet` does not work yet.**
 
 ### macOS and Linux — install script
 
@@ -152,16 +116,6 @@ checksum**, and installs `qeet` to `~/.local/bin`. No root, no `sudo`.
 irm https://github.com/qeetgroup/qeet-cli/releases/latest/download/qeet-cli-installer.ps1 | iex
 ```
 
-### Supported platforms
-
-| Platform | Target | Archive | Status |
-|---|---|---|---|
-| macOS, Apple silicon | `aarch64-apple-darwin` | `.tar.xz` | ✅ built · manually tested |
-| macOS, Intel | `x86_64-apple-darwin` | `.tar.xz` | ✅ built in CI |
-| Linux, x86_64 | `x86_64-unknown-linux-gnu` | `.tar.xz` | ✅ built in CI |
-| Linux, arm64 | `aarch64-unknown-linux-gnu` | `.tar.xz` | ✅ built natively in CI |
-| Windows, x86_64 | `x86_64-pc-windows-msvc` | `.zip` | ✅ built + tested in CI |
-
 ### Verify
 
 ```bash
@@ -181,18 +135,15 @@ Then clone something:
 qeet clone id
 ```
 
-<details>
-<summary><b>What the install script writes to your machine</b></summary>
+### What the install script writes
 
-Worth knowing before you run it, since it edits shell configuration. Verified by running the
-published installer against a sandboxed `HOME`:
+Worth knowing before you run it, since it edits shell configuration:
 
 | Path | Purpose |
 |---|---|
 | `~/.local/bin/qeet` | The binary |
 | `~/.local/bin/env`, `env.fish` | Prepends `~/.local/bin` to `PATH`, idempotently |
-| `~/.profile` | Adds `. "$HOME/.local/bin/env"`, only if absent |
-| `~/.zshrc` | Same line |
+| `~/.profile`, `~/.zshrc` | Adds `. "$HOME/.local/bin/env"`, only if absent |
 | `~/.config/fish/conf.d/qeet-cli.env.fish` | The fish equivalent |
 | `~/.config/qeet-cli/qeet-cli-receipt.json` | Install receipt, for uninstalling |
 
@@ -202,38 +153,47 @@ To manage `PATH` yourself and leave every shell config untouched:
 curl -fsSL <installer-url> | QEET_CLI_NO_MODIFY_PATH=1 sh
 ```
 
+### Installer options
+
 | Variable | Effect |
 |---|---|
 | `QEET_CLI_INSTALL_DIR` | Install somewhere other than `~/.local/bin` |
 | `QEET_CLI_NO_MODIFY_PATH=1` | Do not touch any shell startup file |
 | `QEET_CLI_PRINT_VERBOSE=1` | Verbose output |
 
-</details>
-
-<details>
-<summary><b>Pinning a version, manual download, and building from source</b></summary>
+### Pinning a version
 
 `latest` always fetches the newest release. For a reproducible install — CI, for example —
 name the release:
 
 ```bash
-curl -fsSL https://github.com/qeetgroup/qeet-cli/releases/download/v0.1.2/qeet-cli-installer.sh | sh
+curl -fsSL https://github.com/qeetgroup/qeet-cli/releases/download/v0.1.1/qeet-cli-installer.sh | sh
 ```
 
+### Manual download
+
 Archives and checksums for every platform are on the
-[Releases](https://github.com/qeetgroup/qeet-cli/releases) page. Verify before running:
+[Releases](https://github.com/qeetgroup/qeet-cli/releases) page.
+
+| Platform | Archive |
+|---|---|
+| macOS, Apple silicon | `qeet-cli-aarch64-apple-darwin.tar.xz` |
+| macOS, Intel | `qeet-cli-x86_64-apple-darwin.tar.xz` |
+| Linux, x86_64 | `qeet-cli-x86_64-unknown-linux-gnu.tar.xz` |
+| Linux, arm64 | `qeet-cli-aarch64-unknown-linux-gnu.tar.xz` |
+| Windows, x86_64 | `qeet-cli-x86_64-pc-windows-msvc.zip` |
+
+Verify it before you run it:
 
 ```bash
 sha256sum -c qeet-cli-aarch64-apple-darwin.tar.xz.sha256
 ```
 
-From source:
+### From source
 
 ```bash
 cargo install --git https://github.com/qeetgroup/qeet-cli --locked
 ```
-
-</details>
 
 ### Prerequisites
 
@@ -264,11 +224,11 @@ qeet clone <product>
 
 The full option set, deliberately small:
 
-| Option | Default | Meaning |
-|---|---|---|
-| `--concurrency <N>` | available parallelism, capped at 8 | Repositories to clone at once. Range 1–64. |
-| `--protocol <ssh\|https>` | from the manifest | Override the default git transport. Repositories with an explicit `url` are unaffected. |
-| `--manifest <PATH>` | built-in registry | Use this manifest instead. |
+| Option | Meaning |
+|---|---|
+| `--concurrency <N>` | Repositories to clone at once. Default: available parallelism, capped at 8. Range 1–64. |
+| `--protocol <ssh\|https>` | Override the manifest's default git transport. Repositories with an explicit `url` are unaffected. |
+| `--manifest <PATH>` | Use this manifest instead of the registry built into the binary. |
 
 ```bash
 qeet clone pay
@@ -285,7 +245,7 @@ does not inspect, mirror or modify your `gh` or git authentication settings.
 Keys are canonical lowercase. Lookup is case-insensitive and trims whitespace, so
 `qeet clone ID` and `qeet clone id` are the same request.
 
-Ask for one that does not exist and Qeet CLI lists the ones that do, with a suggestion:
+Ask for one that does not exist and Qeet CLI lists the ones that do:
 
 ```console
 $ qeet clone poeple
@@ -303,42 +263,49 @@ Available products:
 
 ## Workspace layout
 
-**Flat.** `qeet clone id` clones into the current directory, with no product directory in
-between:
+Repositories are grouped under the product's directory:
 
 ```text
 ~/projects/qg/
-├── qeet-id-server/
-├── qeet-id-console/
-├── qeet-id-login/
-└── ...
+└── qeet-id/
+    ├── qeet-id-server/
+    ├── qeet-id-console/
+    ├── qeet-id-login/
+    └── ...
 ```
 
-Repository names are unique across the Qeet Group organization, so a flat layout cannot
-collide within a product or between two products.
+The directory comes from the manifest, so it is data rather than a naming rule — `id` groups
+under `qeet-id`, `qeetrix` under `qeetrix`.
+
+A product with **no** `directory` clones flat into the current directory. That is deliberate,
+not an oversight: `qeet clone group` fetches the organization-level repositories
+(`qeet-docs`, `qeet-apis`, `qeet-group`), which belong at the top of a workspace rather than
+nested one level deeper.
+
+```bash
+qeet clone id      # -> qeet-id/qeet-id-server, qeet-id/qeet-id-console, ...
+qeet clone group   # -> qeet-docs, qeet-apis, qeet-group        (flat, no group dir)
+```
+
+A `path` override on a repository is relative to the group directory, so the grouping always
+holds.
 
 ### What happens when something is already there
 
 Every destination is classified **before any git process starts**. Nothing existing is ever
 deleted or overwritten.
 
-```mermaid
-flowchart TD
-    S(["destination"]) --> E{"exists?"}
-    E -->|no| C1["✅ clone<br/>qeet created it, so qeet may clean it up"]
-    E -->|yes| D{"a directory?"}
-    D -->|no| B1["⛔ refuse<br/>something is in the way"]
-    D -->|yes| M{"empty?"}
-    M -->|yes| C2["✅ clone into it<br/>not ours to remove"]
-    M -->|no| R{"a git repository?"}
-    R -->|no| B2["⛔ refuse<br/>not empty, not a repository"]
-    R -->|yes| O{"origin?"}
-    O -->|same repository| SK["⏭️ skip<br/>already present, counts as success"]
-    O -->|different| B3["⛔ refuse<br/>prints found and expected URL"]
-    O -->|cannot confirm| B4["⛔ refuse<br/>never guess"]
-```
+| On disk | Qeet CLI |
+|---|---|
+| Nothing | Clones. If the clone fails, removes the directory it created. |
+| An empty directory | Clones into it. Never removes it, because it was not ours. |
+| The same repository (`origin` matches) | **Skips it**, reports "already present", counts as success. |
+| A *different* repository | Refuses, and prints both the found and the expected URL. |
+| A git repository with no `origin` | Refuses. Identity cannot be confirmed, so it is not assumed. |
+| A non-empty non-repository | Refuses, and names the path. |
+| A path resolving outside the workspace | Refuses. Creates and removes nothing. |
 
-`origin` comparison is **semantic**, not string equality:
+`origin` comparison is semantic, not string equality:
 `git@github.com:qeetgroup/x.git` and `https://github.com/qeetgroup/x.git` are recognised as
 the same repository. Where identity cannot be established with confidence, Qeet CLI refuses
 rather than guessing — assuming "same repository" is the one wrong guess that could cost you
@@ -362,19 +329,24 @@ Clones run concurrently with a **bounded** number of git processes — bounded b
 simultaneous git processes would exhaust file descriptors and invite rate limiting from the
 remote. There is no unlimited mode.
 
-Measured on Qeet Logs (6 repositories, over HTTPS, one run each):
-
-| Concurrency | Wall time | |
-|:---:|---:|---|
-| `1` (sequential) | 8.7s | `████████████████████` |
-| `6` | 2.1s | `█████` |
-
-Roughly 4×, and it scales with the size of the product. Your numbers will differ with network
-and repository size; the point is that the concurrency is real rather than cosmetic.
+The default is your machine's available parallelism, capped at 8. Override per run:
 
 ```bash
 qeet clone id --concurrency 4
 ```
+
+Measured on Qeet Logs (6 repositories, over HTTPS, one run each):
+
+| Concurrency | Wall time |
+|---|---|
+| `1` (sequential) | 8.7s |
+| `6` | 2.1s |
+
+Roughly 4×, and it scales with the size of the product. Your numbers will differ with network
+and repository size; the point is that the concurrency is real rather than cosmetic.
+
+A repository that fails never cancels one still running. Every repository appears in the
+final report.
 
 ### Cancelling
 
@@ -406,8 +378,7 @@ git rewrite it for you, which Qeet CLI inherits for free:
 git config --global url."https://github.com/".insteadOf "git@github.com:"
 ```
 
-<details>
-<summary><b>If you use a dedicated SSH key for Qeet Group</b></summary>
+### If you use a dedicated SSH key for Qeet Group
 
 A common setup is a per-organization SSH host alias, so a work laptop can hold more than one
 GitHub identity:
@@ -421,14 +392,7 @@ Host github-qg
 ```
 
 The built-in registry derives URLs from `github.com`, which would reach your *other* identity
-and report private repositories as "not found". Confirm which account git is using:
-
-```bash
-ssh -T git@github.com     # names the account
-ssh -T git@github-qg      # should name your Qeet account
-```
-
-Point the manifest at the alias instead, once:
+and report private repositories as "not found". Point the manifest at the alias instead, once:
 
 ```bash
 # macOS; use $XDG_CONFIG_HOME/qeet on Linux or %APPDATA%\qeet on Windows
@@ -440,8 +404,6 @@ curl -fsSL https://raw.githubusercontent.com/qeetgroup/qeet-cli/main/config/prod
 
 Every later `qeet clone` picks that up automatically. `--protocol https` also works and needs
 no configuration at all.
-
-</details>
 
 ---
 
@@ -469,29 +431,22 @@ repositories = [
 Only `name` is required. The clone URL is derived from `[remote]` plus the name, so 66 URLs
 are not written out by hand.
 
-| Field | | Meaning |
+| Field | Optional | Meaning |
 |---|---|---|
-| `name` | **required** | Repository name, and the destination directory unless `path` says otherwise |
-| `url` | optional | Full override. Used exactly as written, whatever `--protocol` says |
-| `path` | optional | Destination relative to the workspace. Must stay inside it |
-| `ref` | optional | Branch or tag to clone instead of the remote's default |
+| `name` | required | Repository name, and the destination directory unless `path` says otherwise. |
+| `url` | optional | Full override. Used exactly as written, whatever `--protocol` says. |
+| `path` | optional | Destination relative to the workspace. Must stay inside it. |
+| `ref` | optional | Branch or tag to clone instead of the remote's default. |
 
 ### Where the manifest comes from
 
 First match wins:
 
-```mermaid
-flowchart TD
-    A{"--manifest PATH<br/>given?"} -->|yes| U1(["use it"])
-    A -->|no| B{"QEET_MANIFEST<br/>set?"}
-    B -->|yes| U2(["use it"])
-    B -->|no| C{"config dir<br/>products.toml exists?"}
-    C -->|yes| U3(["use it"])
-    C -->|no| D(["use the registry<br/>built into the binary"])
-```
-
-The config directory is `~/Library/Application Support/qeet/` on macOS,
-`$XDG_CONFIG_HOME/qeet/` on Linux and `%APPDATA%\qeet\` on Windows.
+1. `--manifest <PATH>`
+2. the `QEET_MANIFEST` environment variable
+3. `<config-dir>/qeet/products.toml` — `~/Library/Application Support/qeet/` on macOS,
+   `$XDG_CONFIG_HOME/qeet/` on Linux, `%APPDATA%\qeet\` on Windows
+4. the registry built into the binary
 
 The built-in registry is why `qeet clone id` works the moment you install it, with no setup
 and no network call.
@@ -515,21 +470,19 @@ that are relative and stay inside the workspace, and colliding destinations.
 ## Exit codes
 
 | Code | Meaning |
-|:---:|---|
-| `0` | Every repository was cloned or was already present |
-| `1` | One or more repositories failed, or the run was cancelled |
-| `2` | Command-line misuse. `--help` and `--version` exit `0` |
-| `3` | Configuration problem: unusable manifest, unknown product, or no usable git |
+|---|---|
+| `0` | Every repository was cloned or was already present. |
+| `1` | One or more repositories failed, or the run was cancelled. |
+| `2` | Command-line misuse. `--help` and `--version` exit `0`. |
+| `3` | Configuration problem: unusable manifest, unknown product, or no usable git. |
 
 git's own exit code is never surfaced as Qeet CLI's — git reports almost everything as 128,
 which would tell a script nothing.
 
 ### Output streams
 
-| Stream | Carries |
-|---|---|
-| **stdout** | The result: the final summary, and nothing else |
-| **stderr** | Progress and diagnostics |
+- **stdout** carries the result: the final summary, and nothing else.
+- **stderr** carries progress and diagnostics.
 
 So `qeet clone id > summary.txt` still shows you failures on the terminal. Progress is a live
 display on a terminal and deterministic one-line-per-event text anywhere else, so CI logs
@@ -554,9 +507,9 @@ GitHub returns the same answer for "no such repository" and "you cannot see this
 repository". Check the name in the manifest, then your organization access.
 
 If this happens for *every* private repository but public ones clone fine, you are almost
-certainly authenticating as the wrong identity — see the dedicated-SSH-key note under
-[Authentication](#authentication). Confirm with `ssh -T git@github.com`, which names the
-account git is using.
+certainly authenticating as the wrong identity — see
+[If you use a dedicated SSH key for Qeet Group](#if-you-use-a-dedicated-ssh-key-for-qeet-group).
+Confirm with `ssh -T git@github.com`, which names the account git is using.
 </details>
 
 <details>
@@ -656,35 +609,17 @@ organization has a repository that belongs to no product and is not explicitly e
 ### Releasing
 
 Open a PR — the patch version is bumped on your branch automatically — then merge to `main`.
-That is the whole trigger.
-
-```mermaid
-flowchart TD
-    PR(["open a PR"]) --> V["version.yml<br/>bumps the patch version on your branch"]
-    V --> MG["merge to main"]
-    MG --> P{"publish.yml<br/>already released?"}
-    P -->|yes| STOP(["nothing to do"])
-    P -->|no| DSP["dispatch release.yml"]
-    DSP --> VAL{"validate<br/>fmt · clippy · test"}
-    VAL -->|fails| NONE(["nothing built<br/>no tag exists"])
-    VAL -->|passes| BLD["build 5 targets<br/>+ installers + formula"]
-    BLD --> REL["create the GitHub Release<br/>which creates the vX.Y.Z tag"]
-    REL --> DEP(["Deployments entry"])
-```
-
-A `vX.Y.Z` tag therefore only ever exists for a version whose builds actually passed. Full
-detail in **[docs/releasing.md](docs/releasing.md)**.
+That is the whole trigger. See **[docs/releasing.md](docs/releasing.md)**.
 
 ---
 
 ## Limitations
 
-- **`brew install qeet` does not work yet.** Only `brew install qeetgroup/tap/qeet` does.
-- **`get.qeet.in` is not live.** DNS is in place; no host serves it yet. It is optional —
-  both documented install paths work without it.
+- **`brew install qeet` does not work yet.** Only `brew install qeetgroup/tap/qeet` does. See
+  [Installation](#homebrew--macos-and-linux).
+- **`get.qeet.in` is not live.** DNS is in place; nothing serves it yet.
 - The built-in registry is a snapshot, not a live lookup.
 - The Homebrew formula has no `brew test` block — cargo-dist does not generate one.
-- Homebrew formula publishing is not yet automatic; it needs a token and an attribution fix.
 - A symlinked destination is refused rather than followed, even when it points somewhere
   legitimate inside the workspace.
 - Progress is per repository, not per object. Qeet CLI does not stream git's own progress,
@@ -697,12 +632,10 @@ The architecture leaves room for `qeet status`, `pull`, `sync` and a remote regi
 manifest is already data-driven and the git adapter is already a trait. **None of them is
 implemented, and none should be until `qeet clone` is excellent.**
 
----
+## Contributing
 
-<div align="center">
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: [SECURITY.md](SECURITY.md).
 
-**[Documentation](docs/)** · **[Releases](https://github.com/qeetgroup/qeet-cli/releases)** · **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)**
+## License
 
-MIT © 2026 Qeet Group
-
-</div>
+MIT — see [LICENSE](LICENSE). © 2026 Qeet Group.

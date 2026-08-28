@@ -50,6 +50,9 @@ pub fn check(manifest: &Manifest) -> Vec<Issue> {
         if product.name.trim().is_empty() {
             issues.push(issue(&at, "`name` is empty"));
         }
+        if let Some(dir) = product.directory.as_deref() {
+            check_path(dir, &format!("{at}.directory"), &mut issues);
+        }
         if product.repositories.is_empty() {
             issues.push(issue(&at, "`repositories` is empty; a product needs at least one"));
             continue;
