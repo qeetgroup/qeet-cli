@@ -15,7 +15,8 @@
 </p>
 
 ```bash
-brew install qeetgroup/tap/qeet && qeet clone id
+brew tap qeetgroup/tap && brew install qeet
+qeet clone id
 ```
 
 </div>
@@ -121,15 +122,27 @@ final report.
 ### Homebrew — macOS and Linux
 
 ```bash
-brew install qeetgroup/tap/qeet
+brew tap qeetgroup/tap    # once per machine
+brew install qeet
 ```
 
-> [!IMPORTANT]
-> **This is a temporary command.** The intended end state is `brew install qeet`, which needs
-> [homebrew-core](https://github.com/Homebrew/homebrew-core). Core requires **≥75 stars, ≥30
-> forks or ≥30 watchers**, and it does not accept third-party prebuilt binaries — a core
-> formula must build from source. Until both are resolved, the tap command above is the real
-> one. **`brew install qeet` does not work yet.**
+After that one-time tap, `brew install qeet` and `brew upgrade qeet` are all you ever need —
+Homebrew searches your taps, so the short name resolves.
+
+Prefer a single line? `brew install qeetgroup/tap/qeet` taps and installs together, and is
+exactly equivalent.
+
+Upgrading later:
+
+```bash
+brew update && brew upgrade qeet
+```
+
+> [!NOTE]
+> `brew install qeet` on a machine with **no** tap at all would need
+> [homebrew-core](https://github.com/Homebrew/homebrew-core), which requires ≥75 stars, ≥30
+> forks or ≥30 watchers and does not accept third-party prebuilt binaries. That is the only
+> thing still missing — the tap gives you the short command today.
 
 ### macOS and Linux — install script
 
@@ -744,7 +757,10 @@ detail in **[docs/releasing.md](docs/releasing.md)**.
 
 ## Limitations
 
-- **`brew install qeet` does not work yet.** Only `brew install qeetgroup/tap/qeet` does.
+- **`brew install qeet` needs the tap first** (`brew tap qeetgroup/tap`). Working with no tap
+  at all would require homebrew-core, which is not yet reachable.
+- **The tap is not updated automatically** on release — it needs a token and an attribution
+  fix, so `brew upgrade qeet` can lag a release. See [docs/releasing.md](docs/releasing.md).
 - **`get.qeet.in` is not live.** DNS is in place; no host serves it yet. It is optional —
   both documented install paths work without it.
 - The built-in registry is a snapshot, not a live lookup.
