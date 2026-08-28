@@ -57,6 +57,25 @@ gh workflow run release.yml --ref main --field tag=v0.1.1
 The `tag` input defaults to `dry-run`, which plans and builds but does not publish — useful
 for checking the pipeline without shipping anything.
 
+### Deployments and the `release` environment
+
+`publish.yml`'s `release` job declares a GitHub [environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
+named `release`. That is what makes each release appear in the repository's
+**Deployments / Environments** panel, linked to the GitHub Release it produced — the same way
+`qeetrix-icons` uses `npm-publish` and `qeet-notify-server` uses `production`.
+
+A deployment record is only created when something is actually released: the `check` job
+decides, and the `release` job (which carries the environment) is skipped when the version is
+already published.
+
+**To require a human before any release**, add a required reviewer to the environment:
+
+```text
+Settings → Environments → release → Required reviewers
+```
+
+Nothing else changes; the release simply waits for approval before dispatching.
+
 ### Why a dispatch rather than a tag push
 
 A tag pushed with `GITHUB_TOKEN` does **not** trigger another workflow, while
