@@ -94,13 +94,24 @@ impl Fixture {
         ))
     }
 
-    /// `qeet`, run from the workspace directory.
+    /// `qeet`, run from the workspace directory, fully isolated from the developer's machine.
+    ///
+    /// Isolation is not optional here. qeet's manifest precedence includes a user config
+    /// directory, so without redirecting the variables that locate it, a config file in the
+    /// developer's home directory silently becomes an input to every test -- which is exactly
+    /// how `repos_honours_the_protocol_override` started failing once one existed.
     pub fn qeet(&self) -> Command {
         let mut command = Command::cargo_bin("qeet").expect("qeet binary should be built");
         command.current_dir(&self.work);
-        // Isolate from the developer's own configuration: a stray QEET_MANIFEST in the
-        // environment must not change what these tests exercise.
+
         command.env_remove("QEET_MANIFEST");
+        // Point every platform's config-directory root at a directory that has no config in
+        // it: `$HOME` for the Apple and XDG strategies, `%APPDATA%` for Windows.
+        let empty = self.root.path().join("fake-home");
+        std::fs::create_dir_all(&empty).expect("create fake home");
+        command.env("HOME", &empty);
+        command.env("XDG_CONFIG_HOME", empty.join(".config"));
+        command.env("APPDATA", &empty);
         command
     }
 

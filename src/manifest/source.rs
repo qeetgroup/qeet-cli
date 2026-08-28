@@ -96,9 +96,14 @@ fn read(path: &Path) -> Result<String, ManifestError> {
 }
 
 /// `<config-dir>/qeet/products.toml`, using each platform's native convention:
-/// `~/Library/Application Support` on macOS, `%APPDATA%` on Windows, `$XDG_CONFIG_HOME`
-/// on Linux. `None` when there is no home directory to derive it from, in which case the
-/// tier is simply skipped -- a missing home directory should not stop a clone.
+/// `~/Library/Preferences` on macOS, `%APPDATA%` on Windows, `$XDG_CONFIG_HOME` on Linux --
+/// whatever `etcetera`'s native strategy calls the *config* directory. Note that on macOS
+/// that is `Preferences`, not `Application Support`, which is the *data* directory.
+///
+/// `None` when there is no home directory to derive it from, in which case the tier is
+/// simply skipped -- a missing home directory should not stop a clone.
+///
+/// `qeet doctor` prints the resolved path, so nobody has to reason about this from docs.
 pub fn user_config_path() -> Option<PathBuf> {
     use etcetera::BaseStrategy as _;
 

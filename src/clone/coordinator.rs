@@ -373,6 +373,24 @@ mod tests {
         ) -> impl Future<Output = Result<Option<String>, GitError>> + Send {
             async { Ok(None) }
         }
+
+        fn inspect(
+            &self,
+            _repository: PathBuf,
+        ) -> impl Future<Output = Result<crate::git::RepoState, GitError>> + Send {
+            async { panic!("the clone coordinator must not inspect repositories") }
+        }
+
+        fn fetch(&self, _repository: PathBuf) -> impl Future<Output = Result<(), Failure>> + Send {
+            async { panic!("the clone coordinator must not fetch") }
+        }
+
+        fn fast_forward(
+            &self,
+            _repository: PathBuf,
+        ) -> impl Future<Output = Result<(), Failure>> + Send {
+            async { panic!("the clone coordinator must not fast-forward") }
+        }
     }
 
     fn transient() -> Failure {

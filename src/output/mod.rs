@@ -13,6 +13,7 @@
 
 pub mod interactive;
 pub mod plain;
+pub mod style;
 
 use std::io::{IsTerminal, Write};
 use std::sync::Arc;

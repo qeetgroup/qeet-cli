@@ -6,6 +6,50 @@ All notable changes to Qeet CLI are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-28
+
+A product's repositories are now grouped on disk, and the CLI grew from one command to eight.
+
+### Added
+
+- **Grouping.** `qeet clone id` produces `qeet-id/qeet-id-server` rather than dropping twelve
+  repositories into the current directory. The directory is manifest data, and is optional —
+  `qeet clone group` stays flat, because `qeet-docs` and `qeet-apis` belong at the top of a
+  workspace.
+- **`qeet products`** — every product, its repository count and its group directory.
+- **`qeet repos <product>`** — a product's repositories and their resolved clone URLs.
+- **`qeet status <product>`** — per repository: branch, clean/dirty, ahead/behind, or not
+  cloned. Read-only.
+- **`qeet update <product>`** — fast-forwards only what is unambiguous, and skips and names
+  everything else. `--dry-run` reports without fetching. See below.
+- **`qeet doctor`** — checks git, the manifest in effect, workspace writability, which git
+  identity you authenticate as, and **whether that identity can actually reach a configured
+  repository**. That last check exists because a wrong SSH identity is indistinguishable from
+  "repository not found".
+- **`qeet self-update`** — works out how qeet was installed and hands over to that installer.
+  It does not overwrite itself, which would leave Homebrew inconsistent.
+- **`qeet clone all`** — every product, each with its own bounded concurrency.
+- **Colour**, through one shared palette. Every coloured state also has a symbol and a word,
+  so output survives being piped or screen-read. `NO_COLOR` is honoured.
+- **An aggregate progress bar** with a live elapsed clock, under the per-repository spinners.
+
+### Fixed
+
+- **The aggregate progress bar never rendered.** Its template began with `\n`, and
+  `MultiProgress` accounts for line count per bar, so a two-line bar silently drew nothing.
+  Found by capturing real output through a pty: 0 bar glyphs before, 411 after. A test now
+  asserts no `MultiProgress` template contains a newline.
+- **A detached HEAD was considered fast-forwardable.** `fast_forwardable()` checked for an
+  upstream and a behind-count but not for a branch, so a detached repository that was behind
+  would have been merged into. Caught by its own test before it shipped.
+- **Integration tests were reading the developer's own config.** The fixture removed
+  `QEET_MANIFEST` but not the variables that locate the user config directory, so a config
+  file in `$HOME` became a silent test input. The fixture now redirects `HOME`,
+  `XDG_CONFIG_HOME` and `APPDATA`.
+- **The documented macOS config path was wrong.** It is `~/Library/Preferences/qeet/`, not
+  `~/Library/Application Support/qeet/` — `etcetera`'s Apple strategy puts `config_dir` in
+  `Preferences`. `qeet doctor` now prints the resolved path so nobody has to trust the docs.
+
 ## [0.1.3] — 2026-08-28
 
 ### Changed
@@ -124,7 +168,8 @@ watchers and refuses third-party prebuilt binaries. The tap command is the hones
 service; telemetry; shell completions; a Homebrew tap; JSON output. See
 [docs/decisions.md](docs/decisions.md).
 
-[Unreleased]: https://github.com/qeetgroup/qeet-cli/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/qeetgroup/qeet-cli/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.2.0
 [0.1.3]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.3
 [0.1.2]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.2
 [0.1.1]: https://github.com/qeetgroup/qeet-cli/releases/tag/v0.1.1

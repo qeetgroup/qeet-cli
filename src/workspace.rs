@@ -363,6 +363,24 @@ mod tests {
                 self.0.iter().find(|(path, _)| *path == repository).map(|(_, url)| url.clone());
             async move { Ok(found) }
         }
+
+        fn inspect(
+            &self,
+            _repository: PathBuf,
+        ) -> impl Future<Output = Result<crate::git::RepoState, GitError>> + Send {
+            async { panic!("preflight must not inspect repositories") }
+        }
+
+        fn fetch(&self, _repository: PathBuf) -> impl Future<Output = Result<(), Failure>> + Send {
+            async { panic!("preflight must not fetch") }
+        }
+
+        fn fast_forward(
+            &self,
+            _repository: PathBuf,
+        ) -> impl Future<Output = Result<(), Failure>> + Send {
+            async { panic!("preflight must not fast-forward") }
+        }
     }
 
     fn manifest_with(repositories: &str) -> Manifest {

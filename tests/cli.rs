@@ -3,6 +3,7 @@
 mod common;
 
 use common::Fixture;
+use predicates::prelude::*;
 use predicates::str::contains;
 
 /// Documented in the README and depended on by scripts.
@@ -148,4 +149,197 @@ fn an_incomplete_run_exits_non_zero() {
         .arg(&manifest)
         .assert()
         .code(EXIT_INCOMPLETE);
+}
+
+// ---------------------------------------------------------------------------------------
+// The platform commands.
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn products_lists_the_registry_with_counts() {
+    Fixture::new()
+        .qeet()
+        .arg("products")
+        .assert()
+        .success()
+        .stdout(contains("Qeet Products"))
+        .stdout(contains("id"))
+        .stdout(contains("Qeet ID"))
+        .stdout(contains("qeet-id"))
+        .stdout(contains("16 products"));
+}
+
+#[test]
+fn repos_lists_a_product_and_where_it_lands() {
+    Fixture::new()
+        .qeet()
+        .args(["repos", "id"])
+        .assert()
+        .success()
+        .stdout(contains("Qeet ID"))
+        .stdout(contains("into qeet-id/"))
+        .stdout(contains("qeet-id-server"))
+        // The verified name, not the illustrative `qeet-id-api` from the original brief.
+        .stdout(predicates::str::contains("qeet-id-api").not());
+}
+
+#[test]
+fn repos_honours_the_protocol_override() {
+    Fixture::new()
+        .qeet()
+        .args(["repos", "id", "--protocol", "https"])
+        .assert()
+        .success()
+        .stdout(contains("https://github.com/qeetgroup/qeet-id-server.git"));
+}
+
+#[test]
+fn repos_rejects_an_unknown_product_like_clone_does() {
+    Fixture::new()
+        .qeet()
+        .args(["repos", "nope"])
+        .assert()
+        .code(EXIT_CONFIG)
+        .stderr(contains("Unknown product: nope"));
+}
+
+/// `status` on an empty workspace reports everything missing, and says what to do.
+#[test]
+fn status_reports_repositories_that_are_not_cloned() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_for("demo", &[("alpha", fixture.bare_repo("alpha", &[]))]);
+
+    fixture
+        .qeet()
+        .args(["status", "demo", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success()
+        .stdout(contains("not cloned"))
+        .stdout(contains("qeet clone demo"));
+}
+
+/// The property that matters most: `update` must not touch a repository with uncommitted
+/// work, and must say why it declined.
+#[test]
+fn update_refuses_a_dirty_repository_and_preserves_the_work() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_for("demo", &[("alpha", fixture.bare_repo("alpha", &[]))]);
+
+    fixture.qeet().args(["clone", "demo", "--manifest"]).arg(&manifest).assert().success();
+
+    let precious = fixture.path("alpha").join("do-not-lose-me.txt");
+    std::fs::write(&precious, "uncommitted work").expect("write");
+
+    fixture
+        .qeet()
+        .args(["update", "demo", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success()
+        .stdout(contains("skipped"))
+        .stdout(contains("uncommitted change"));
+
+    assert_eq!(
+        std::fs::read_to_string(&precious).expect("read"),
+        "uncommitted work",
+        "update must never touch uncommitted work"
+    );
+}
+
+/// `--dry-run` must not fetch or merge anything at all.
+#[test]
+fn update_dry_run_changes_nothing() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_for("demo", &[("alpha", fixture.bare_repo("alpha", &[]))]);
+
+    fixture.qeet().args(["clone", "demo", "--manifest"]).arg(&manifest).assert().success();
+
+    fixture
+        .qeet()
+        .args(["update", "demo", "--dry-run", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success()
+        .stdout(contains("dry run"))
+        .stdout(contains("nothing was changed"));
+}
+
+#[test]
+fn update_reports_a_repository_that_was_never_cloned() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_for("demo", &[("alpha", fixture.bare_repo("alpha", &[]))]);
+
+    fixture
+        .qeet()
+        .args(["update", "demo", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success()
+        .stdout(contains("not cloned"));
+}
+
+#[test]
+fn doctor_checks_the_environment_and_says_so() {
+    Fixture::new()
+        .qeet()
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(contains("qeet doctor"))
+        .stdout(contains("git"))
+        .stdout(contains("manifest"))
+        .stdout(contains("workspace"));
+}
+
+#[test]
+fn self_update_explains_the_route_without_overwriting_anything() {
+    Fixture::new()
+        .qeet()
+        .arg("self-update")
+        .assert()
+        .success()
+        .stdout(contains("qeet self-update"))
+        .stdout(contains(env!("CARGO_PKG_VERSION")))
+        // It must never claim to have updated itself.
+        .stdout(predicates::str::contains("updated").not());
+}
+
+/// `clone all` walks every product in the manifest.
+#[test]
+fn clone_all_clones_every_product() {
+    let fixture = Fixture::new();
+    let alpha = fixture.bare_repo("alpha", &[]);
+    let beta = fixture.bare_repo("beta", &[]);
+    let manifest = fixture.manifest(&format!(
+        "schema = 1\n\
+         [remote]\nhost = \"h\"\nowner = \"o\"\nprotocol = \"https\"\n\
+         [products.one]\nname = \"One\"\ndirectory = \"grp-one\"\n\
+         repositories = [{{ name = \"alpha\", url = \"{alpha}\" }}]\n\
+         [products.two]\nname = \"Two\"\ndirectory = \"grp-two\"\n\
+         repositories = [{{ name = \"beta\", url = \"{beta}\" }}]\n"
+    ));
+
+    fixture.qeet().args(["clone", "all", "--manifest"]).arg(&manifest).assert().success();
+
+    assert!(fixture.path("grp-one/alpha/.git").exists(), "product one cloned into its group");
+    assert!(fixture.path("grp-two/beta/.git").exists(), "product two cloned into its group");
+}
+
+/// Grouping, end to end through the binary.
+#[test]
+fn clone_groups_repositories_under_the_product_directory() {
+    let fixture = Fixture::new();
+    let alpha = fixture.bare_repo("alpha", &[]);
+    let manifest = fixture.manifest(&format!(
+        "schema = 1\n\
+         [remote]\nhost = \"h\"\nowner = \"o\"\nprotocol = \"https\"\n\
+         [products.demo]\nname = \"Demo\"\ndirectory = \"qeet-demo\"\n\
+         repositories = [{{ name = \"alpha\", url = \"{alpha}\" }}]\n"
+    ));
+
+    fixture.qeet().args(["clone", "demo", "--manifest"]).arg(&manifest).assert().success();
+
+    assert!(fixture.path("qeet-demo/alpha/.git").exists(), "grouped");
+    assert!(!fixture.path("alpha").exists(), "not also placed flat");
 }
