@@ -7,7 +7,9 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 
-use super::{CloneRequest, Failure, FailureKind, GitClient, GitError, classify, clone_args};
+use super::{
+    CloneRequest, Failure, FailureKind, GitClient, GitError, RepoState, classify, clone_args,
+};
 
 /// Batch mode makes `ssh` fail instead of prompting. Applied only when the developer has
 /// not configured their own SSH command.
@@ -132,6 +134,112 @@ impl GitClient for Git {
             Ok(if url.is_empty() { None } else { Some(url) })
         }
     }
+
+    fn inspect(
+        &self,
+        repository: PathBuf,
+    ) -> impl Future<Output = Result<RepoState, GitError>> + Send {
+        // One porcelain call answers branch, upstream and ahead/behind together, which is
+        // both fewer processes and a consistent snapshot -- three separate calls could
+        // disagree if something changed underneath them.
+        let mut status = self.command();
+        status.arg("-C").arg(&repository).args(["status", "--porcelain=v2", "--branch"]);
+
+        async move {
+            let output =
+                status.output().await.map_err(|err| GitError::Unusable(err.to_string()))?;
+            if !output.status.success() {
+                return Err(GitError::Unusable(format!(
+                    "`git status` failed in {}: {}",
+                    repository.display(),
+                    classify::relevant_stderr(&String::from_utf8_lossy(&output.stderr))
+                )));
+            }
+            Ok(parse_status(&String::from_utf8_lossy(&output.stdout)))
+        }
+    }
+
+    fn fetch(&self, repository: PathBuf) -> impl Future<Output = Result<(), Failure>> + Send {
+        let mut command = self.command();
+        command
+            .arg("-C")
+            .arg(&repository)
+            // --prune keeps stale remote branches from accumulating; --tags so a release tag
+            // shows up without a second call.
+            .args(["fetch", "--prune", "--tags", "--quiet"]);
+        async move { run_for_failure(command).await }
+    }
+
+    fn fast_forward(
+        &self,
+        repository: PathBuf,
+    ) -> impl Future<Output = Result<(), Failure>> + Send {
+        let mut command = self.command();
+        command
+            .arg("-C")
+            .arg(&repository)
+            // --ff-only is the whole safety guarantee: git refuses rather than creating a
+            // merge commit, so this cannot invent history or leave a conflict behind.
+            .args(["merge", "--ff-only", "--quiet"]);
+        async move { run_for_failure(command).await }
+    }
+}
+
+/// Run a git command, turning a non-zero exit into a classified [`Failure`].
+async fn run_for_failure(mut command: Command) -> Result<(), Failure> {
+    let output = match command.output().await {
+        Ok(output) => output,
+        Err(err) => {
+            return Err(Failure {
+                kind: FailureKind::Spawn,
+                exit_code: None,
+                git_stderr: err.to_string(),
+            });
+        }
+    };
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(Failure {
+        kind: classify::classify(&stderr),
+        exit_code: output.status.code(),
+        git_stderr: classify::relevant_stderr(&stderr),
+    })
+}
+
+/// Parse `git status --porcelain=v2 --branch`.
+///
+/// The v2 format is used precisely because it is documented as stable and machine-readable;
+/// v1 and the human-readable output are not.
+fn parse_status(stdout: &str) -> RepoState {
+    let mut state = RepoState { branch: None, upstream: None, ahead: 0, behind: 0, dirty: 0 };
+
+    for line in stdout.lines() {
+        if let Some(rest) = line.strip_prefix("# branch.head ") {
+            // git writes the literal "(detached)" rather than a branch name.
+            let head = rest.trim();
+            if head != "(detached)" {
+                state.branch = Some(head.to_string());
+            }
+        } else if let Some(rest) = line.strip_prefix("# branch.upstream ") {
+            state.upstream = Some(rest.trim().to_string());
+        } else if let Some(rest) = line.strip_prefix("# branch.ab ") {
+            // Format: "+<ahead> -<behind>".
+            for field in rest.split_whitespace() {
+                match field.split_at(1) {
+                    ("+", n) => state.ahead = n.parse().unwrap_or(0),
+                    ("-", n) => state.behind = n.parse().unwrap_or(0),
+                    _ => {}
+                }
+            }
+        } else if !line.starts_with('#') && !line.trim().is_empty() {
+            // Every remaining line is a changed, renamed, unmerged or untracked entry.
+            state.dirty += 1;
+        }
+    }
+
+    state
 }
 
 /// Decide whether to supply `GIT_SSH_COMMAND`.
@@ -260,5 +368,163 @@ mod tests {
         assert_eq!(failure.kind, FailureKind::NotFound, "{failure:?}");
         assert!(!failure.git_stderr.is_empty(), "git's own words must be preserved");
         assert!(!failure.retryable(), "a missing repository must not be retried");
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::parse_status;
+
+    /// Real `git status --porcelain=v2 --branch` output, clean and current.
+    #[test]
+    fn parses_a_clean_current_repository() {
+        let out = "# branch.oid 8f1b0c2\n\
+                   # branch.head main\n\
+                   # branch.upstream origin/main\n\
+                   # branch.ab +0 -0\n";
+        let s = parse_status(out);
+        assert_eq!(s.branch.as_deref(), Some("main"));
+        assert_eq!(s.upstream.as_deref(), Some("origin/main"));
+        assert_eq!((s.ahead, s.behind, s.dirty), (0, 0, 0));
+        assert!(s.up_to_date());
+    }
+
+    #[test]
+    fn parses_ahead_and_behind() {
+        let out = "# branch.head develop\n\
+                   # branch.upstream origin/develop\n\
+                   # branch.ab +2 -5\n";
+        let s = parse_status(out);
+        assert_eq!((s.ahead, s.behind), (2, 5));
+        assert!(!s.fast_forwardable(), "diverged must not be fast-forwarded");
+    }
+
+    #[test]
+    fn counts_every_kind_of_change() {
+        let out = "# branch.head main\n\
+                   # branch.upstream origin/main\n\
+                   # branch.ab +0 -0\n\
+                   1 .M N... 100644 100644 100644 abc abc src/main.rs\n\
+                   1 M. N... 100644 100644 100644 abc abc Cargo.toml\n\
+                   2 R. N... 100644 100644 100644 abc abc R100 new\told\n\
+                   u UU N... 100644 100644 100644 100644 abc abc abc conflicted.rs\n\
+                   ? untracked.txt\n";
+        let s = parse_status(out);
+        assert_eq!(s.dirty, 5, "modified, staged, renamed, unmerged and untracked all count");
+        assert!(!s.fast_forwardable());
+        assert!(s.blocker().unwrap().contains("uncommitted"));
+    }
+
+    #[test]
+    fn detects_a_detached_head() {
+        let out = "# branch.oid 8f1b0c2\n# branch.head (detached)\n";
+        let s = parse_status(out);
+        assert_eq!(s.branch, None);
+        assert_eq!(s.blocker().unwrap(), "detached HEAD");
+    }
+
+    #[test]
+    fn a_branch_with_no_upstream_has_no_ab_line() {
+        let out = "# branch.head local-only\n";
+        let s = parse_status(out);
+        assert_eq!(s.branch.as_deref(), Some("local-only"));
+        assert_eq!(s.upstream, None);
+        assert_eq!(s.blocker().unwrap(), "no upstream branch");
+    }
+}
+
+#[cfg(test)]
+mod live_git_tests {
+    use super::*;
+
+    /// Against a real repository, cloned from a real bare remote, with no network.
+    #[tokio::test]
+    async fn inspects_a_real_repository() {
+        let git = Git::discover().await.expect("git");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bare = dir.path().join("origin.git");
+        let work = dir.path().join("work");
+
+        let run = |args: Vec<&str>, cwd: Option<&std::path::Path>| {
+            let mut c = std::process::Command::new("git");
+            c.args(["-c", "user.name=t", "-c", "user.email=t@e", "-c", "commit.gpgsign=false"]);
+            if let Some(cwd) = cwd {
+                c.arg("-C").arg(cwd);
+            }
+            c.args(&args);
+            let out = c.output().expect("git runs");
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+
+        run(
+            vec!["init", "--bare", "--quiet", "--initial-branch=main", bare.to_str().unwrap()],
+            None,
+        );
+        run(vec!["clone", "--quiet", bare.to_str().unwrap(), work.to_str().unwrap()], None);
+        std::fs::write(work.join("a.txt"), "one\n").expect("write");
+        run(vec!["add", "-A"], Some(&work));
+        run(vec!["commit", "--quiet", "-m", "one"], Some(&work));
+        run(vec!["push", "--quiet", "-u", "origin", "main"], Some(&work));
+
+        let clean = git.inspect(work.clone()).await.expect("inspect");
+        assert_eq!(clean.branch.as_deref(), Some("main"));
+        assert_eq!(clean.upstream.as_deref(), Some("origin/main"));
+        assert!(clean.up_to_date(), "{clean:?}");
+
+        // An untracked file makes it dirty, and therefore not fast-forwardable.
+        std::fs::write(work.join("scratch.txt"), "wip\n").expect("write");
+        let dirty = git.inspect(work.clone()).await.expect("inspect");
+        assert_eq!(dirty.dirty, 1, "{dirty:?}");
+        assert!(!dirty.fast_forwardable());
+        assert!(dirty.blocker().unwrap().contains("uncommitted"));
+    }
+
+    /// fetch + fast_forward advance a clean repository that is strictly behind.
+    #[tokio::test]
+    async fn fast_forwards_a_repository_that_is_behind() {
+        let git = Git::discover().await.expect("git");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bare = dir.path().join("origin.git");
+        let author = dir.path().join("author");
+        let follower = dir.path().join("follower");
+
+        let run = |args: Vec<&str>, cwd: Option<&std::path::Path>| {
+            let mut c = std::process::Command::new("git");
+            c.args(["-c", "user.name=t", "-c", "user.email=t@e", "-c", "commit.gpgsign=false"]);
+            if let Some(cwd) = cwd {
+                c.arg("-C").arg(cwd);
+            }
+            c.args(&args);
+            assert!(c.output().expect("git runs").status.success(), "git {args:?}");
+        };
+
+        run(
+            vec!["init", "--bare", "--quiet", "--initial-branch=main", bare.to_str().unwrap()],
+            None,
+        );
+        run(vec!["clone", "--quiet", bare.to_str().unwrap(), author.to_str().unwrap()], None);
+        std::fs::write(author.join("a.txt"), "one\n").expect("write");
+        run(vec!["add", "-A"], Some(&author));
+        run(vec!["commit", "--quiet", "-m", "one"], Some(&author));
+        run(vec!["push", "--quiet", "-u", "origin", "main"], Some(&author));
+
+        // The follower starts level, then the author pushes another commit.
+        run(vec!["clone", "--quiet", bare.to_str().unwrap(), follower.to_str().unwrap()], None);
+        std::fs::write(author.join("b.txt"), "two\n").expect("write");
+        run(vec!["add", "-A"], Some(&author));
+        run(vec!["commit", "--quiet", "-m", "two"], Some(&author));
+        run(vec!["push", "--quiet", "origin", "main"], Some(&author));
+
+        // Before fetching, the follower cannot know it is behind.
+        assert!(git.inspect(follower.clone()).await.expect("inspect").up_to_date());
+
+        git.fetch(follower.clone()).await.expect("fetch should succeed");
+        let behind = git.inspect(follower.clone()).await.expect("inspect");
+        assert_eq!((behind.ahead, behind.behind), (0, 1), "{behind:?}");
+        assert!(behind.fast_forwardable());
+
+        git.fast_forward(follower.clone()).await.expect("fast-forward should succeed");
+        assert!(follower.join("b.txt").exists(), "the new commit's file should be present");
+        assert!(git.inspect(follower).await.expect("inspect").up_to_date());
     }
 }

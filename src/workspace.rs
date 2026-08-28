@@ -168,8 +168,17 @@ impl Workspace {
     ) -> Vec<Plan> {
         let mut plans = Vec::with_capacity(product.repositories.len());
 
+        // Repositories are grouped under the product's directory when it has one, so
+        // `qeet clone id` produces `qeet-id/qeet-id-server`. A `path` override is relative to
+        // that same directory, not to the workspace root, so the grouping always holds.
+        let group = product.group_dir();
+
         for entry in &product.repositories {
-            let relative = entry.path.clone().unwrap_or_else(|| entry.name.clone());
+            let within = entry.path.clone().unwrap_or_else(|| entry.name.clone());
+            let relative = match group {
+                Some(dir) => format!("{dir}/{within}"),
+                None => within,
+            };
             let url = manifest.url_for(entry, protocol);
 
             let (destination, state) = match self.destination_for(Path::new(&relative)) {
@@ -353,6 +362,24 @@ mod tests {
             let found =
                 self.0.iter().find(|(path, _)| *path == repository).map(|(_, url)| url.clone());
             async move { Ok(found) }
+        }
+
+        fn inspect(
+            &self,
+            _repository: PathBuf,
+        ) -> impl Future<Output = Result<crate::git::RepoState, GitError>> + Send {
+            async { panic!("preflight must not inspect repositories") }
+        }
+
+        fn fetch(&self, _repository: PathBuf) -> impl Future<Output = Result<(), Failure>> + Send {
+            async { panic!("preflight must not fetch") }
+        }
+
+        fn fast_forward(
+            &self,
+            _repository: PathBuf,
+        ) -> impl Future<Output = Result<(), Failure>> + Send {
+            async { panic!("preflight must not fast-forward") }
         }
     }
 
@@ -614,6 +641,92 @@ repositories = [{repositories}]
             !destination.starts_with("\\\\?\\"),
             "the destination handed to git must be in a form git accepts, got {destination}"
         );
+    }
+
+    /// `qeet clone id` groups under the product's directory.
+    #[tokio::test]
+    async fn repositories_are_grouped_under_the_product_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let text = r#"
+schema = 1
+[remote]
+host = "github.com"
+owner = "qeetgroup"
+protocol = "ssh"
+[products.id]
+name = "Qeet ID"
+directory = "qeet-id"
+repositories = [{ name = "qeet-id-server" }, { name = "qeet-id-console" }]
+"#;
+        let manifest = Manifest::load(text, "test").expect("fixture must be valid");
+        let workspace = Workspace::at(dir.path()).expect("workspace");
+        let plans = workspace
+            .plan(&manifest, &manifest.products["id"], Protocol::Ssh, &Origins(vec![]))
+            .await;
+
+        let displays: Vec<&str> = plans.iter().map(|p| p.display.as_str()).collect();
+        assert_eq!(displays, ["qeet-id/qeet-id-server", "qeet-id/qeet-id-console"]);
+        for plan in &plans {
+            assert_eq!(
+                plan.destination.parent(),
+                Some(workspace.root().join("qeet-id").as_path()),
+                "every repository sits inside the group directory"
+            );
+            assert_eq!(plan.state, State::Create);
+        }
+    }
+
+    /// A product with no `directory` stays flat -- which is how the organization-level
+    /// repositories (qeet-docs, qeet-apis) are meant to land.
+    #[tokio::test]
+    async fn a_product_without_a_directory_stays_flat() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let plan = plan_one(dir.path(), r#"{ name = "qeet-docs" }"#, Origins(vec![])).await;
+        assert_eq!(plan.display, "qeet-docs");
+        assert_eq!(plan.destination.parent(), Some(dir.path().canonicalize().unwrap().as_path()));
+    }
+
+    /// A `path` override is relative to the group directory, so grouping always holds.
+    #[tokio::test]
+    async fn a_path_override_is_relative_to_the_group_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let text = r#"
+schema = 1
+[remote]
+host = "github.com"
+owner = "qeetgroup"
+protocol = "ssh"
+[products.id]
+name = "Qeet ID"
+directory = "qeet-id"
+repositories = [{ name = "qeet-id-server", path = "services/api" }]
+"#;
+        let manifest = Manifest::load(text, "test").expect("fixture must be valid");
+        let workspace = Workspace::at(dir.path()).expect("workspace");
+        let plans = workspace
+            .plan(&manifest, &manifest.products["id"], Protocol::Ssh, &Origins(vec![]))
+            .await;
+
+        assert_eq!(plans[0].display, "qeet-id/services/api");
+        assert_eq!(plans[0].destination, workspace.root().join("qeet-id/services/api"));
+    }
+
+    /// A group directory that tries to escape is refused, like any other path.
+    #[tokio::test]
+    async fn an_escaping_group_directory_is_refused() {
+        let text = r#"
+schema = 1
+[remote]
+host = "github.com"
+owner = "qeetgroup"
+protocol = "ssh"
+[products.id]
+name = "Qeet ID"
+directory = "../outside"
+repositories = [{ name = "repo" }]
+"#;
+        let err = Manifest::load(text, "test").expect_err("must be refused");
+        assert!(err.to_string().contains("contains `..`"), "{err}");
     }
 
     #[tokio::test]

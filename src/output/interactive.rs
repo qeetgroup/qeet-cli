@@ -21,6 +21,8 @@ pub struct Interactive {
     multi: MultiProgress,
     /// Repository name -> its row. Written once in `begin`, read afterwards.
     rows: Mutex<HashMap<String, ProgressBar>>,
+    /// The aggregate bar under the rows: how many are done, and how long it has taken.
+    total: Mutex<Option<ProgressBar>>,
 }
 
 impl Interactive {
@@ -29,11 +31,16 @@ impl Interactive {
             // MultiProgress draws to stderr, keeping stdout clean for the summary.
             multi: MultiProgress::new(),
             rows: Mutex::new(HashMap::new()),
+            total: Mutex::new(None),
         }
     }
 
     fn row(&self, name: &str) -> Option<ProgressBar> {
         self.rows.lock().ok()?.get(name).cloned()
+    }
+
+    fn total(&self) -> Option<ProgressBar> {
+        self.total.lock().ok()?.clone()
     }
 }
 
@@ -61,6 +68,16 @@ impl Renderer for Interactive {
             bar.set_prefix(format!("{name:<width$}"));
             bar.set_message("pending");
             rows.insert(name.clone(), bar);
+        }
+        drop(rows);
+
+        // Added after the rows so it renders below them, and steadily ticked so the elapsed
+        // time keeps moving even while every clone is mid-flight and silent.
+        if !repositories.is_empty() {
+            let total = self.multi.add(ProgressBar::new(repositories.len() as u64));
+            total.set_style(total_style());
+            total.enable_steady_tick(TICK);
+            *self.total.lock().expect("no task panics while holding this lock") = Some(total);
         }
     }
 
@@ -101,6 +118,10 @@ impl Renderer for Interactive {
         };
 
         row.finish_with_message(format!("{symbol} {detail}"));
+
+        if let Some(total) = self.total() {
+            total.inc(1);
+        }
     }
 
     fn cancelling(&self) {
@@ -110,6 +131,10 @@ impl Renderer for Interactive {
     fn finish(&self, report: &Report) {
         // Release the drawing area before the summary is written, so the two do not fight
         // over the same lines.
+        if let Some(total) = self.total() {
+            total.disable_steady_tick();
+            total.finish_and_clear();
+        }
         let _ = self.multi.clear();
         for row in self.rows.lock().expect("lock").values() {
             row.disable_steady_tick();
@@ -132,6 +157,11 @@ fn finished_style() -> ProgressStyle {
     style("  {prefix}  {msg}")
 }
 
+/// The aggregate bar: a filled bar, a done/total counter and a live elapsed clock.
+fn total_style() -> ProgressStyle {
+    style("  {bar:28.cyan/blue}  {pos}/{len} done  ·  {elapsed_precise}").progress_chars("━━╸")
+}
+
 /// `ProgressStyle::with_template` only fails on a malformed template, and every template
 /// here is a literal -- but a panic in the output layer would be an absurd way to lose a
 /// clone, so fall back to the default style instead.
@@ -150,10 +180,17 @@ mod tests {
             "  {prefix:.dim}  {msg:.dim}",
             "  {prefix}  {spinner:.cyan} {msg}",
             "  {prefix}  {msg}",
+            "  {bar:28.cyan/blue}  {pos}/{len} done  ·  {elapsed_precise}",
         ] {
             assert!(
                 ProgressStyle::with_template(template).is_ok(),
                 "malformed template: {template}"
+            );
+            // A newline would make one bar span two lines, which MultiProgress accounts for
+            // per-bar -- the aggregate bar silently stopped rendering until this was removed.
+            assert!(
+                !template.contains('\n'),
+                "MultiProgress templates must be one line: {template}"
             );
         }
     }

@@ -1,6 +1,6 @@
 [package]
 name = "qeet-cli"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.87"
 description = "Product-aware CLI for Qeet Group's polyrepo organization: clone every repository of a product with one command."
@@ -22,6 +22,9 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.6", features = ["derive"] }
+# Already in the tree via indicatif. Used for colour, and for its NO_COLOR / TERM=dumb /
+# non-TTY detection, which we must not reimplement.
+console = "0.16"
 # `std::fs::canonicalize` returns Windows verbatim paths (\\?\C:\...), which git rejects
 # outright. dunce canonicalises to the most compatible form instead.
 dunce = "1.0"

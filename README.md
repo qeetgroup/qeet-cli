@@ -26,7 +26,7 @@ brew install qeetgroup/tap/qeet && qeet clone id
 
 | | | |
 |---|---|---|
-| [Overview](#overview) | [Installation](#installation) | [Usage](#usage) |
+| [Overview](#overview) | [Installation](#installation) | [Commands](#usage) |
 | [How it works](#how-it-works) | [Workspace layout](#workspace-layout) | [Concurrency](#concurrency) |
 | [Authentication](#authentication) | [Manifest format](#manifest-format) | [Exit codes](#exit-codes) |
 | [Troubleshooting](#troubleshooting) | [Development](#development) | [Limitations](#limitations) |
@@ -257,10 +257,53 @@ rm ~/.local/bin/qeet                              # install script
 ## Usage
 
 ```bash
-qeet --help
-qeet --version
-qeet clone <product>
+qeet products              # what can I clone?
+qeet repos id              # which repositories, and where will they land?
+qeet clone id              # clone them, concurrently
+qeet clone all             # every product
+qeet status id             # what is on disk, and how does it compare?
+qeet update id             # fast-forward what can be fast-forwarded
+qeet doctor                # can this machine actually use qeet?
+qeet self-update           # update the CLI itself
 ```
+
+| Command | Touches your files? | What it does |
+|---|:---:|---|
+| `products` | no | Lists every product, its repository count and its group directory |
+| `repos <product>` | no | Lists a product's repositories and their resolved clone URLs |
+| `status <product>` | no | Per repository: branch, clean/dirty, ahead/behind, or not cloned |
+| `doctor` | no | Checks git, the manifest in effect, workspace writability, and whether your git identity can actually reach the configured remote |
+| `clone <product>` | creates | Clones what is missing. Never overwrites or deletes anything existing |
+| `update <product>` | **modifies** | Fast-forwards only what is unambiguous. Skips and names everything else |
+| `self-update` | no | Works out how qeet was installed and tells you the one command to run |
+
+### `qeet update` is deliberately timid
+
+It is the only command that changes an existing repository, so it advances one **only** when
+the outcome is unambiguous: clean, on a branch, tracking an upstream, nothing unpushed, and
+strictly behind. `git merge --ff-only` enforces that at the git level — it refuses rather
+than creating a merge commit, so `update` cannot invent history or leave a conflict behind.
+
+Everything else is skipped and named:
+
+```console
+$ qeet update id
+Qeet ID
+
+  qeet-id-server   ✓ fast-forwarded 3 commit(s)
+  qeet-id-console  ! skipped: 2 uncommitted changes
+  qeet-id-login    ! skipped: diverged: 2 ahead, 4 behind
+  qeet-id-auth     ! skipped: detached HEAD
+  qeet-id-go       · already up to date
+  qeet-id-docs     ○ not cloned
+
+  updated 1  ·  up to date 1  ·  skipped 3  ·  not cloned 1  ·  failed 0
+  Skipped repositories were left exactly as they were. Resolve them by hand.
+```
+
+Use `--dry-run` to see what it would do without fetching or merging anything.
+
+### Options
 
 The full option set, deliberately small:
 
@@ -364,10 +407,19 @@ remote. There is no unlimited mode.
 
 Measured on Qeet Logs (6 repositories, over HTTPS, one run each):
 
-| Concurrency | Wall time | |
-|:---:|---:|---|
-| `1` (sequential) | 8.7s | `████████████████████` |
-| `6` | 2.1s | `█████` |
+```mermaid
+---
+config:
+  xyChart:
+    width: 700
+    height: 260
+---
+xychart-beta
+    title "Wall time by concurrency — 6 repositories"
+    x-axis "concurrency" [1, 6]
+    y-axis "seconds" 0 --> 10
+    bar [8.7, 2.1]
+```
 
 Roughly 4×, and it scales with the size of the product. Your numbers will differ with network
 and repository size; the point is that the concurrency is real rather than cosmetic.
@@ -431,11 +483,19 @@ ssh -T git@github-qg      # should name your Qeet account
 Point the manifest at the alias instead, once:
 
 ```bash
-# macOS; use $XDG_CONFIG_HOME/qeet on Linux or %APPDATA%\qeet on Windows
-mkdir -p ~/Library/Application\ Support/qeet
+# `qeet doctor` prints the exact path for your platform.
+mkdir -p ~/Library/Preferences/qeet
 curl -fsSL https://raw.githubusercontent.com/qeetgroup/qeet-cli/main/config/products.toml \
   | sed 's/^host     = "github.com"$/host     = "github-qg"/' \
-  > ~/Library/Application\ Support/qeet/products.toml
+  > ~/Library/Preferences/qeet/products.toml
+```
+
+Then confirm it took effect:
+
+```console
+$ qeet doctor
+  ssh identity   ✓ authenticates as msboffl
+  remote access  ✓ can reach qeet-ai-files over ssh
 ```
 
 Every later `qeet clone` picks that up automatically. `--protocol https` also works and needs
@@ -481,17 +541,22 @@ are not written out by hand.
 First match wins:
 
 ```mermaid
-flowchart TD
-    A{"--manifest PATH<br/>given?"} -->|yes| U1(["use it"])
-    A -->|no| B{"QEET_MANIFEST<br/>set?"}
-    B -->|yes| U2(["use it"])
-    B -->|no| C{"config dir<br/>products.toml exists?"}
-    C -->|yes| U3(["use it"])
-    C -->|no| D(["use the registry<br/>built into the binary"])
+flowchart LR
+    A["--manifest PATH"] -->|not set| B["QEET_MANIFEST"]
+    B -->|not set| C["config dir<br/>qeet/products.toml"]
+    C -->|absent| D["built into the binary"]
+    A -.->|set| USE(["used"])
+    B -.->|set| USE
+    C -.->|present| USE
+    D -.-> USE
 ```
 
-The config directory is `~/Library/Application Support/qeet/` on macOS,
-`$XDG_CONFIG_HOME/qeet/` on Linux and `%APPDATA%\qeet\` on Windows.
+The config directory is `~/Library/Preferences/qeet/` on macOS, `$XDG_CONFIG_HOME/qeet/` on
+Linux and `%APPDATA%\qeet\` on Windows. Rather than reasoning about that, ask:
+
+```bash
+qeet doctor      # prints the resolved path, and whether a config is in effect
+```
 
 The built-in registry is why `qeet clone id` works the moment you install it, with no setup
 and no network call.

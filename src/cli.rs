@@ -42,11 +42,77 @@ pub struct Cli {
 enum Command {
     /// Clone every repository belonging to a product, concurrently.
     Clone(CloneArgs),
+
+    /// List every product in the registry.
+    Products(ManifestArgs),
+
+    /// List the repositories belonging to a product.
+    Repos(ProductArgs),
+
+    /// Show the state of a product's repositories on disk.
+    Status(ProductArgs),
+
+    /// Fast-forward a product's repositories, skipping anything ambiguous.
+    Update(UpdateArgs),
+
+    /// Check that this machine can actually use qeet.
+    Doctor(ManifestArgs),
+
+    /// Update the qeet CLI itself.
+    #[command(name = "self-update")]
+    SelfUpdate,
+}
+
+/// For the commands that only need a manifest.
+#[derive(Debug, Args)]
+pub struct ManifestArgs {
+    /// Manifest to use instead of the registry built into this binary.
+    #[arg(long, value_name = "PATH")]
+    pub manifest: Option<PathBuf>,
+}
+
+/// For the read-only commands that act on one product.
+#[derive(Debug, Args)]
+pub struct ProductArgs {
+    /// Product key, e.g. `id`. Run `qeet products` to list them.
+    #[arg(value_name = "PRODUCT")]
+    pub product: String,
+
+    /// Git transport to use, overriding the manifest default.
+    #[arg(long, value_name = "PROTOCOL")]
+    pub protocol: Option<Protocol>,
+
+    /// Manifest to use instead of the registry built into this binary.
+    #[arg(long, value_name = "PATH")]
+    pub manifest: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct UpdateArgs {
+    /// Product key, e.g. `id`. Run `qeet products` to list them.
+    #[arg(value_name = "PRODUCT")]
+    pub product: String,
+
+    /// Maximum number of repositories to work on at once.
+    #[arg(long, value_name = "N", value_parser = parse_concurrency)]
+    pub concurrency: Option<NonZeroUsize>,
+
+    /// Report what would change without fetching or merging anything.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Git transport to use, overriding the manifest default.
+    #[arg(long, value_name = "PROTOCOL")]
+    pub protocol: Option<Protocol>,
+
+    /// Manifest to use instead of the registry built into this binary.
+    #[arg(long, value_name = "PATH")]
+    pub manifest: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
 pub struct CloneArgs {
-    /// Product to clone, e.g. `id`. Run with an unknown product to list them all.
+    /// Product to clone, e.g. `id` — or `all` for every product in the registry.
     #[arg(value_name = "PRODUCT")]
     pub product: String,
 
@@ -97,17 +163,41 @@ pub async fn run() -> ExitCode {
         }
     };
 
-    match cli.command {
-        Command::Clone(args) => match commands::clone::run(&args).await {
-            // The report has already been rendered; the exit code is its verdict.
-            Ok(report) => {
-                ExitCode::from(if report.is_complete() { EXIT_SUCCESS } else { EXIT_INCOMPLETE })
-            }
-            Err(error) => {
-                report_error(&error);
-                error.exit_code()
-            }
-        },
+    // Each command has already rendered its own output by this point; all that is left is
+    // to turn "did it achieve what was asked" into an exit code.
+    let outcome = match cli.command {
+        Command::Clone(args) => commands::clone::run(&args).await.map(Outcome::from_report),
+        Command::Products(args) => commands::products::run(&args).await.map(|()| Outcome::Fine),
+        Command::Repos(args) => commands::repos::run(&args).await.map(|()| Outcome::Fine),
+        Command::Status(args) => commands::status::run(&args).await.map(Outcome::from_complete),
+        Command::Update(args) => commands::update::run(&args).await.map(Outcome::from_complete),
+        Command::Doctor(args) => commands::doctor::run(&args).await.map(Outcome::from_complete),
+        Command::SelfUpdate => commands::self_update::run().await.map(|()| Outcome::Fine),
+    };
+
+    match outcome {
+        Ok(Outcome::Fine) => ExitCode::from(EXIT_SUCCESS),
+        Ok(Outcome::Incomplete) => ExitCode::from(EXIT_INCOMPLETE),
+        Err(error) => {
+            report_error(&error);
+            error.exit_code()
+        }
+    }
+}
+
+/// Whether a command achieved what was asked, which is all the exit code needs to know.
+enum Outcome {
+    Fine,
+    Incomplete,
+}
+
+impl Outcome {
+    fn from_report(report: crate::clone::Report) -> Self {
+        Self::from_complete(report.is_complete())
+    }
+
+    fn from_complete(complete: bool) -> Self {
+        if complete { Self::Fine } else { Self::Incomplete }
     }
 }
 
@@ -140,7 +230,9 @@ mod tests {
     #[test]
     fn parses_the_primary_invocation() {
         let cli = Cli::try_parse_from(["qeet", "clone", "id"]).expect("should parse");
-        let Command::Clone(args) = cli.command;
+        let Command::Clone(args) = cli.command else {
+            panic!("expected the clone subcommand");
+        };
         assert_eq!(args.product, "id");
         assert_eq!(args.concurrency, None);
         assert_eq!(args.protocol, None);
@@ -162,7 +254,9 @@ mod tests {
         ])
         .expect("should parse");
 
-        let Command::Clone(args) = cli.command;
+        let Command::Clone(args) = cli.command else {
+            panic!("expected the clone subcommand");
+        };
         assert_eq!(args.product, "pay");
         assert_eq!(args.concurrency, NonZeroUsize::new(6));
         assert_eq!(args.protocol, Some(Protocol::Https));
@@ -205,14 +299,58 @@ mod tests {
         assert!(err.to_string().contains("ssh"), "should list the choices: {err}");
     }
 
+    /// The scope boundary, restated now that the platform commands exist. `pull`, `sync`,
+    /// `graph`, `dev` and `init` are still deliberately absent -- `update` covers pulling,
+    /// and the rest were never agreed.
     #[test]
-    fn there_are_no_other_subcommands_in_v1() {
-        // Guards the scope boundary: status, pull and sync are deliberately absent.
-        for absent in ["status", "pull", "sync", "graph", "dev"] {
+    fn the_deferred_subcommands_still_do_not_exist() {
+        for absent in ["pull", "sync", "graph", "dev", "init"] {
+            assert!(Cli::try_parse_from(["qeet", absent]).is_err(), "`{absent}` must not exist");
+        }
+    }
+
+    #[test]
+    fn parses_every_subcommand() {
+        for argv in [
+            vec!["qeet", "products"],
+            vec!["qeet", "repos", "id"],
+            vec!["qeet", "status", "id"],
+            vec!["qeet", "update", "id"],
+            vec!["qeet", "update", "id", "--dry-run"],
+            vec!["qeet", "update", "id", "--concurrency", "4"],
+            vec!["qeet", "doctor"],
+            vec!["qeet", "self-update"],
+            vec!["qeet", "clone", "all"],
+        ] {
+            Cli::try_parse_from(&argv).unwrap_or_else(|e| panic!("{argv:?}: {e}"));
+        }
+    }
+
+    /// `self_update` would be wrong: the command a user types is hyphenated.
+    #[test]
+    fn self_update_is_spelled_with_a_hyphen() {
+        assert!(Cli::try_parse_from(["qeet", "self-update"]).is_ok());
+        assert!(Cli::try_parse_from(["qeet", "self_update"]).is_err());
+    }
+
+    /// The commands that need a product must demand one.
+    #[test]
+    fn product_arguments_are_required_where_they_matter() {
+        for bare in ["repos", "status", "update"] {
             assert!(
-                Cli::try_parse_from(["qeet", absent]).is_err(),
-                "`{absent}` must not exist in v1"
+                Cli::try_parse_from(["qeet", bare]).is_err(),
+                "`{bare}` must require a product"
             );
         }
+        // These two take no product at all.
+        assert!(Cli::try_parse_from(["qeet", "products"]).is_ok());
+        assert!(Cli::try_parse_from(["qeet", "doctor"]).is_ok());
+    }
+
+    #[test]
+    fn update_rejects_a_zero_concurrency_like_clone_does() {
+        let err = Cli::try_parse_from(["qeet", "update", "id", "--concurrency", "0"])
+            .expect_err("zero must be refused");
+        assert!(err.to_string().contains("at least 1"), "{err}");
     }
 }

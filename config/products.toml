@@ -11,6 +11,11 @@
 # To re-verify this file against the organization (requires an authenticated `gh`):
 #   cargo test --test manifest -- --ignored
 #
+# Each product's repositories are grouped under its `directory`, so `qeet clone id`
+# produces qeet-id/qeet-id-server, qeet-id/qeet-id-console, and so on. A product with no
+# `directory` clones flat into the current directory -- which is why `group` has none:
+# qeet-docs and qeet-apis belong at the top of a workspace, not nested one deeper.
+#
 # Clone URLs are derived from [remote] plus each repository name. Set `url` on a
 # repository to override that entirely; set `path` for a destination other than the
 # repository name; set `ref` to clone a branch or tag other than the remote default.
@@ -24,6 +29,7 @@ protocol = "ssh"        # ssh | https -- override per run with --protocol
 
 [products.id]
 name = "Qeet ID"
+directory = "qeet-id"
 repositories = [
   { name = "qeet-id-server"  },
   { name = "qeet-id-console" },
@@ -41,6 +47,7 @@ repositories = [
 
 [products.pay]
 name = "Qeet Pay"
+directory = "qeet-pay"
 repositories = [
   { name = "qeet-pay-server"   },
   { name = "qeet-pay-console"  },
@@ -54,6 +61,7 @@ repositories = [
 
 [products.logs]
 name = "Qeet Logs"
+directory = "qeet-logs"
 repositories = [
   { name = "qeet-logs-server"  },
   { name = "qeet-logs-console" },
@@ -65,6 +73,7 @@ repositories = [
 
 [products.notify]
 name = "Qeet Notify"
+directory = "qeet-notify"
 repositories = [
   { name = "qeet-notify-server"  },
   { name = "qeet-notify-console" },
@@ -76,6 +85,7 @@ repositories = [
 
 [products.people]
 name = "Qeet People"
+directory = "qeet-people"
 repositories = [
   { name = "qeet-people-server"  },
   { name = "qeet-people-console" },
@@ -85,6 +95,7 @@ repositories = [
 
 [products.ai]
 name = "Qeet AI"
+directory = "qeet-ai"
 # pre-launch; qeet-ai is an umbrella repository that pre-dates the split
 repositories = [
   { name = "qeet-ai"           },
@@ -99,6 +110,7 @@ repositories = [
 
 [products.news]
 name = "Qeet News"
+directory = "qeet-news"
 # single-publisher product, no tenancy
 repositories = [
   { name = "qeet-news"       },
@@ -107,6 +119,7 @@ repositories = [
 
 [products.qeetrix]
 name = "Qeetrix"
+directory = "qeetrix"
 # design system; the archived 'qeetrix' monorepo is intentionally omitted
 repositories = [
   { name = "qeetrix-ui"    },
@@ -120,6 +133,7 @@ repositories = [
 
 [products.tasks]
 name = "Qeet Tasks"
+directory = "qeet-tasks"
 # planned; qeet-tasks holds only LICENSE and README.md
 repositories = [
   { name = "qeet-tasks"       },
@@ -128,6 +142,7 @@ repositories = [
 
 [products.mail]
 name = "Qeet Mail"
+directory = "qeet-mail"
 # specification-only, no code exists yet
 repositories = [
   { name = "qeet-mail-files" },
@@ -135,6 +150,7 @@ repositories = [
 
 [products.calendar]
 name = "Qeet Calendar"
+directory = "qeet-calendar"
 # specification-only, no code exists yet
 repositories = [
   { name = "qeet-calendar-files" },
@@ -142,6 +158,7 @@ repositories = [
 
 [products.contacts]
 name = "Qeet Contacts"
+directory = "qeet-contacts"
 # specification-only, no code exists yet
 repositories = [
   { name = "qeet-contacts-files" },
@@ -149,6 +166,7 @@ repositories = [
 
 [products.drive]
 name = "Qeet Drive"
+directory = "qeet-drive"
 # specification-only, no code exists yet
 repositories = [
   { name = "qeet-drive-files" },
@@ -156,6 +174,7 @@ repositories = [
 
 [products.chat]
 name = "Qeet Chat"
+directory = "qeet-chat"
 # specification-only, no code exists yet
 repositories = [
   { name = "qeet-chat-files" },
@@ -163,6 +182,7 @@ repositories = [
 
 [products.meet]
 name = "Qeet Meet"
+directory = "qeet-meet"
 # specification-only, no code exists yet
 repositories = [
   { name = "qeet-meet-files" },
