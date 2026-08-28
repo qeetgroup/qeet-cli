@@ -1,0 +1,13 @@
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock IS committed: qeet-cli ships a binary, and Qeet Group engineering standards
+# require committed lockfiles.
+
+.DS_Store
+Thumbs.db
+
+.idea/
+.vscode/
+*.iml

@@ -1,0 +1,20 @@
+# A well-formed manifest exercising every supported field.
+schema = 1
+
+[remote]
+host     = "github.com"
+owner    = "qeetgroup"
+protocol = "ssh"
+
+[products.demo]
+name = "Demo Product"
+repositories = [
+  { name = "plain" },
+  { name = "pinned", ref = "release" },
+  { name = "relocated", path = "services/api" },
+  { name = "overridden", url = "https://example.invalid/overridden.git" },
+]
+
+[products.solo]
+name = "Solo Product"
+repositories = [{ name = "only" }]

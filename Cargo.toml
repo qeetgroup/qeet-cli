@@ -1,0 +1,70 @@
+[package]
+name = "qeet-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.87"
+description = "Product-aware CLI for Qeet Group's polyrepo organization: clone every repository of a product with one command."
+authors = ["Qeet Group"]
+license = "MIT"
+repository = "https://github.com/qeetgroup/qeet-cli"
+homepage = "https://github.com/qeetgroup/qeet-cli"
+readme = "README.md"
+keywords = ["cli", "git", "clone", "polyrepo", "monorepo"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = ["/.github", "/docs", "/scripts", "/tests"]
+
+# The binary is `qeet`, not `qeet-cli`: the package name follows the Qeet Group repository
+# naming convention, the command name is what a developer types.
+[[bin]]
+name = "qeet"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.6", features = ["derive"] }
+etcetera = "0.11"
+indicatif = "0.18"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+toml = "1.1"
+
+# Only the features this application uses. `full` would pull in the net, fs and io stacks
+# that a process orchestrator has no use for.
+tokio = { version = "1.53", features = [
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "signal",
+    "sync",
+    "time",
+] }
+
+[dev-dependencies]
+assert_cmd = "2.2"
+predicates = "3.1"
+tempfile = "3.27"
+# `test-util` provides the paused clock the retry-backoff tests use, so they assert the
+# real delays without waiting two seconds. Dev-only: it is not compiled into the binary.
+tokio = { version = "1.53", features = [
+    "macros",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "test-util",
+    "time",
+] }
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Surfaced as warnings so `-D warnings` in CI makes them build failures.
+dbg_macro = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+todo = "warn"
+unimplemented = "warn"

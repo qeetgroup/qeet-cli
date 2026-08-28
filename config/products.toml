@@ -1,0 +1,180 @@
+# Qeet Group product registry -- the data behind `qeet clone <product>`.
+#
+# Transcribed from the Qeet Group L0 repository registry (qeet-context/REPOSITORIES.md,
+# verified 2026-08-28) and cross-checked against the live organization. That registry is
+# private, so it cannot be a build-time input; this file is the shipped snapshot of it.
+#
+# 16 products, 66 repositories. Two organization repositories are deliberately absent:
+#   qeetrix   archived historical monorepo, superseded by the six qeetrix-* repositories
+#   .github   organization profile; a ".github" clone directory would be hidden
+#
+# To re-verify this file against the organization (requires an authenticated `gh`):
+#   cargo test --test manifest -- --ignored
+#
+# Clone URLs are derived from [remote] plus each repository name. Set `url` on a
+# repository to override that entirely; set `path` for a destination other than the
+# repository name; set `ref` to clone a branch or tag other than the remote default.
+
+schema = 1
+
+[remote]
+host     = "github.com"
+owner    = "qeetgroup"
+protocol = "ssh"        # ssh | https -- override per run with --protocol
+
+[products.id]
+name = "Qeet ID"
+repositories = [
+  { name = "qeet-id-server"  },
+  { name = "qeet-id-console" },
+  { name = "qeet-id-login"   },
+  { name = "qeet-id-website" },
+  { name = "qeet-id-auth"    },
+  { name = "qeet-id-docs"    },
+  { name = "qeet-id-go"      },
+  { name = "qeet-id-node"    },
+  { name = "qeet-id-react"   },
+  { name = "qeet-id-deploy"  },
+  { name = "qeet-id-files"   },
+  { name = "qeet-id-context" },
+]
+
+[products.pay]
+name = "Qeet Pay"
+repositories = [
+  { name = "qeet-pay-server"   },
+  { name = "qeet-pay-console"  },
+  { name = "qeet-pay-checkout" },
+  { name = "qeet-pay-website"  },
+  { name = "qeet-pay-go"       },
+  { name = "qeet-pay-node"     },
+  { name = "qeet-pay-react"    },
+  { name = "qeet-pay-files"    },
+]
+
+[products.logs]
+name = "Qeet Logs"
+repositories = [
+  { name = "qeet-logs-server"  },
+  { name = "qeet-logs-console" },
+  { name = "qeet-logs-go"      },
+  { name = "qeet-logs-node"    },
+  { name = "qeet-logs-react"   },
+  { name = "qeet-logs-files"   },
+]
+
+[products.notify]
+name = "Qeet Notify"
+repositories = [
+  { name = "qeet-notify-server"  },
+  { name = "qeet-notify-console" },
+  { name = "qeet-notify-go"      },
+  { name = "qeet-notify-node"    },
+  { name = "qeet-notify-react"   },
+  { name = "qeet-notify-files"   },
+]
+
+[products.people]
+name = "Qeet People"
+repositories = [
+  { name = "qeet-people-server"  },
+  { name = "qeet-people-console" },
+  { name = "qeet-people-website" },
+  { name = "qeet-people-files"   },
+]
+
+[products.ai]
+name = "Qeet AI"
+# pre-launch; qeet-ai is an umbrella repository that pre-dates the split
+repositories = [
+  { name = "qeet-ai"           },
+  { name = "qeet-ai-server"    },
+  { name = "qeet-ai-aiservice" },
+  { name = "qeet-ai-console"   },
+  { name = "qeet-ai-deploy"    },
+  { name = "qeet-ai-go"        },
+  { name = "qeet-ai-node"      },
+  { name = "qeet-ai-files"     },
+]
+
+[products.news]
+name = "Qeet News"
+# single-publisher product, no tenancy
+repositories = [
+  { name = "qeet-news"       },
+  { name = "qeet-news-files" },
+]
+
+[products.qeetrix]
+name = "Qeetrix"
+# design system; the archived 'qeetrix' monorepo is intentionally omitted
+repositories = [
+  { name = "qeetrix-ui"    },
+  { name = "qeetrix-icons" },
+  { name = "qeetrix-story" },
+  { name = "qeetrix-docs"  },
+  { name = "qeetrix-cli"   },
+  { name = "qeetrix-mcp"   },
+  { name = "qeetrix-files" },
+]
+
+[products.tasks]
+name = "Qeet Tasks"
+# planned; qeet-tasks holds only LICENSE and README.md
+repositories = [
+  { name = "qeet-tasks"       },
+  { name = "qeet-tasks-files" },
+]
+
+[products.mail]
+name = "Qeet Mail"
+# specification-only, no code exists yet
+repositories = [
+  { name = "qeet-mail-files" },
+]
+
+[products.calendar]
+name = "Qeet Calendar"
+# specification-only, no code exists yet
+repositories = [
+  { name = "qeet-calendar-files" },
+]
+
+[products.contacts]
+name = "Qeet Contacts"
+# specification-only, no code exists yet
+repositories = [
+  { name = "qeet-contacts-files" },
+]
+
+[products.drive]
+name = "Qeet Drive"
+# specification-only, no code exists yet
+repositories = [
+  { name = "qeet-drive-files" },
+]
+
+[products.chat]
+name = "Qeet Chat"
+# specification-only, no code exists yet
+repositories = [
+  { name = "qeet-chat-files" },
+]
+
+[products.meet]
+name = "Qeet Meet"
+# specification-only, no code exists yet
+repositories = [
+  { name = "qeet-meet-files" },
+]
+
+[products.group]
+name = "Qeet Group (organization-level)"
+# organization-level properties, not a product
+repositories = [
+  { name = "qeet-group"   },
+  { name = "qeet-docs"    },
+  { name = "qeet-apis"    },
+  { name = "qeet-files"   },
+  { name = "qeet-context" },
+]

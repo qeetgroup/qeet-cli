@@ -1,0 +1,9 @@
+# Stable options only, so `cargo fmt --check` works on a stable toolchain in CI.
+edition = "2024"
+max_width = 100
+# Without this, rustfmt breaks calls at 60 columns even though the limit is 100, which
+# makes short assertions and constructors three lines long for no gain.
+use_small_heuristics = "Max"
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true

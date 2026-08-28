@@ -1,0 +1,17 @@
+# Two repositories claiming one destination, plus a duplicate name and an unsafe URL:
+# validation must report all of them in a single run.
+schema = 1
+
+[remote]
+host     = "github.com"
+owner    = "qeetgroup"
+protocol = "ssh"
+
+[products.demo]
+name = "Demo Product"
+repositories = [
+  { name = "first", path = "shared" },
+  { name = "second", path = "shared" },
+  { name = "first" },
+  { name = "hostile", url = "ext::sh" },
+]
