@@ -129,12 +129,16 @@ Note the names carry **no version** — that is cargo-dist's convention, and it 
 ### Current state
 
 ```bash
-brew install qeetgroup/tap/qeet     # works
-brew install qeet                    # does NOT work — do not document it as if it does
+brew tap qeetgroup/tap && brew install qeet   # works
+brew install qeetgroup/tap/qeet               # works, equivalent one-liner
+brew install qeet                             # works ONLY if the tap is already added
 ```
 
-The bare name requires [homebrew-core](https://github.com/Homebrew/homebrew-core), which is
-not yet reachable. Two independent gates:
+That last line is the subtlety worth being careful about. Once a machine has tapped
+`qeetgroup/tap`, Homebrew resolves the bare name from it, so `brew install qeet` and
+`brew upgrade qeet` both work — and they will appear to work when you test them, because
+installing via the prefixed form taps automatically. On a machine with **no** tap it fails,
+because `qeet` is not in homebrew-core. Two independent gates keep it out:
 
 | Gate | Requirement | qeet-cli |
 |---|---|---|
