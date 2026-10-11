@@ -76,9 +76,14 @@ fn canonical_key(manifest: &Manifest, requested: &str) -> String {
 
 /// Absolute destination for a repository, mirroring what `clone` would produce.
 pub fn destination(workspace: &Workspace, product: &Product, relative: &str) -> PathBuf {
+    product_dir(workspace, product).join(relative)
+}
+
+/// Where a product's repositories live: its group directory, or the workspace itself.
+pub fn product_dir(workspace: &Workspace, product: &Product) -> PathBuf {
     match product.group_dir() {
-        Some(dir) => workspace.root().join(dir).join(relative),
-        None => workspace.root().join(relative),
+        Some(dir) => workspace.root().join(dir),
+        None => workspace.root().to_path_buf(),
     }
 }
 

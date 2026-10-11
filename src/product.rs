@@ -28,12 +28,58 @@ fn render(err: &UnknownProduct) -> String {
     message.trim_end().to_string()
 }
 
+/// The pseudo-product that means "every product".
+///
+/// Not a product key -- it is every product at once, which is why commands handle it here
+/// rather than it being smuggled into the manifest as a pseudo-product.
+pub const ALL: &str = "all";
+
+/// Is this what the user typed to mean every product?
+pub fn is_all(requested: &str) -> bool {
+    requested.trim().eq_ignore_ascii_case(ALL)
+}
+
 /// Resolve a product key against a manifest.
 pub fn resolve<'m>(manifest: &'m Manifest, requested: &str) -> Result<&'m Product, UnknownProduct> {
+    resolve_keyed(manifest, requested).map(|(_, product)| product)
+}
+
+/// Resolve several product keys at once: in the order given, each at most once, paired with
+/// the manifest's own spelling of the key.
+///
+/// [`ALL`] anywhere in the list means every product, in manifest order. Every other key is
+/// still resolved first, so a typo fails the whole request rather than being quietly
+/// swallowed by `all` or quietly skipped while the rest proceed.
+pub fn resolve_many<'m>(
+    manifest: &'m Manifest,
+    requested: &[String],
+) -> Result<Vec<(&'m str, &'m Product)>, UnknownProduct> {
+    let mut selected: Vec<(&'m str, &'m Product)> = Vec::new();
+    for key in requested.iter().filter(|key| !is_all(key)) {
+        let (key, product) = resolve_keyed(manifest, key)?;
+        if !selected.iter().any(|(seen, _)| *seen == key) {
+            selected.push((key, product));
+        }
+    }
+
+    if requested.iter().any(|key| is_all(key)) {
+        return Ok(manifest
+            .products
+            .iter()
+            .map(|(key, product)| (key.as_str(), product))
+            .collect());
+    }
+    Ok(selected)
+}
+
+fn resolve_keyed<'m>(
+    manifest: &'m Manifest,
+    requested: &str,
+) -> Result<(&'m str, &'m Product), UnknownProduct> {
     let normalised = requested.trim().to_ascii_lowercase();
 
-    if let Some(product) = manifest.products.get(normalised.as_str()) {
-        return Ok(product);
+    if let Some((key, product)) = manifest.products.get_key_value(normalised.as_str()) {
+        return Ok((key.as_str(), product));
     }
 
     Err(UnknownProduct {
@@ -161,6 +207,51 @@ repositories = [{ name = "qeet-people-server" }]
         // ...but two edits away from everything is not.
         let err = resolve(&manifest, "zz").expect_err("must not resolve");
         assert_eq!(err.suggestion, None);
+    }
+
+    fn keys(selected: &[(&str, &Product)]) -> Vec<String> {
+        selected.iter().map(|(key, _)| key.to_string()).collect()
+    }
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn resolves_several_in_the_order_given() {
+        let manifest = manifest();
+        let selected = resolve_many(&manifest, &strings(&["pay", "id"])).expect("should resolve");
+        assert_eq!(keys(&selected), ["pay", "id"]);
+        assert_eq!(selected[0].1.name, "Qeet Pay");
+    }
+
+    #[test]
+    fn several_are_canonicalised_and_deduplicated() {
+        let manifest = manifest();
+        let selected =
+            resolve_many(&manifest, &strings(&["ID", " pay ", "id"])).expect("should resolve");
+        assert_eq!(keys(&selected), ["id", "pay"]);
+    }
+
+    #[test]
+    fn all_means_every_product_in_manifest_order() {
+        let manifest = manifest();
+        for request in [&["all"][..], &["ALL"], &["pay", "all"]] {
+            let selected = resolve_many(&manifest, &strings(request)).expect("should resolve");
+            assert_eq!(keys(&selected), ["id", "pay", "people"], "{request:?}");
+        }
+    }
+
+    /// One bad key must fail the request, not be skipped while the others proceed -- and
+    /// `all` must not swallow it either.
+    #[test]
+    fn one_unknown_among_several_fails_the_request() {
+        let manifest = manifest();
+        for request in [&["id", "poeple"][..], &["all", "poeple"]] {
+            let err = resolve_many(&manifest, &strings(request)).expect_err("must not resolve");
+            assert_eq!(err.requested, "poeple", "{request:?}");
+            assert_eq!(err.suggestion.as_deref(), Some("people"));
+        }
     }
 
     #[test]

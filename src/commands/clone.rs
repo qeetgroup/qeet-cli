@@ -18,11 +18,6 @@ use crate::output;
 use crate::product;
 use crate::workspace::Workspace;
 
-/// Run a clone, returning the report. Never returns `Err` for a repository-level failure --
-/// those are in the report, which is what the exit code is derived from.
-/// The pseudo-product that means "every product".
-const ALL: &str = "all";
-
 /// Only worth reporting when it is not the built-in registry; otherwise it is noise.
 fn manifest_note(loaded: &source::Loaded) -> Option<String> {
     match loaded.origin {
@@ -31,14 +26,14 @@ fn manifest_note(loaded: &source::Loaded) -> Option<String> {
     }
 }
 
+/// Run a clone, returning the report. Never returns `Err` for a repository-level failure --
+/// those are in the report, which is what the exit code is derived from.
 pub async fn run(args: &crate::cli::CloneArgs) -> Result<Report, Error> {
     let loaded = source::resolve(args.manifest.as_deref())?;
     let origin = loaded.origin.to_string();
     let manifest = Manifest::load(&loaded.text, &origin)?;
 
-    // `all` is not a product key -- it is every product at once, which is why it is handled
-    // here rather than smuggled into the manifest as a pseudo-product.
-    if args.product.trim().eq_ignore_ascii_case(ALL) {
+    if product::is_all(&args.product) {
         return clone_everything(&manifest, manifest_note(&loaded), args).await;
     }
 
@@ -50,7 +45,7 @@ pub async fn run(args: &crate::cli::CloneArgs) -> Result<Report, Error> {
     // repository instead of a single clear message.
     let git = Arc::new(Git::discover().await?);
 
-    let workspace = Workspace::discover().map_err(|source| Error::Workspace { source })?;
+    let workspace = Workspace::create().map_err(|source| Error::Workspace { source })?;
 
     let protocol = manifest.remote.effective_protocol(args.protocol);
     let plans = workspace.plan(&manifest, resolved, protocol, git.as_ref()).await;
@@ -84,7 +79,7 @@ async fn clone_everything(
     args: &crate::cli::CloneArgs,
 ) -> Result<Report, Error> {
     let git = Arc::new(Git::discover().await?);
-    let workspace = Workspace::discover().map_err(|source| Error::Workspace { source })?;
+    let workspace = Workspace::create().map_err(|source| Error::Workspace { source })?;
     let protocol = manifest.remote.effective_protocol(args.protocol);
     let renderer = output::detect();
     let options = Options {

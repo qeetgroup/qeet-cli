@@ -6,6 +6,32 @@ All notable changes to Qeet CLI are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: the workspace is `~/QG`, not the current directory.** Every command uses one
+  fixed folder — `/Users/<you>/QG`, `/home/<you>/QG`, `C:\Users\<you>\QG` — wherever it is run
+  from, so `qeet pull all` works from anywhere and a clone run in the wrong directory can no
+  longer scatter repositories into it. `qeet clone` creates the folder the first time;
+  `status` and `pull` never create it. **If your repositories live elsewhere**, set
+  `QEET_WORKSPACE` to that folder once (`export QEET_WORKSPACE=~/Desktop/QG`), or move them.
+  The home folder rather than the Desktop because iCloud and OneDrive commonly sync the
+  Desktop, and syncing `.git` directories corrupts them.
+- `clone`, `status` and `pull` print the folder they are working in, and `qeet doctor` reports
+  the workspace in effect and whether `QEET_WORKSPACE` chose it.
+
+### Added
+
+- **`qeet pull`** — the same command as `qeet update`, under the name git users reach for
+  first. Both spellings stay.
+- **`qeet pull all`**, and **several products at once** (`qeet pull id pay notify`). One
+  bounded pool across every product named, rather than one product at a time, so a
+  one-repository product never leaves slots idle. Results are still printed product by
+  product, in manifest order, as soon as each is complete, followed by a total. A product
+  with nothing cloned is folded into one line instead of a block of "not cloned".
+- A typo among several products fails the whole request before anything is fetched, with the
+  usual "did you mean" — it is never skipped while the rest proceed, and `all` does not
+  swallow it.
+
 ## [0.2.0] — 2026-08-28
 
 A product's repositories are now grouped on disk, and the CLI grew from one command to eight.

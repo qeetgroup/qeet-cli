@@ -34,7 +34,8 @@ pub enum Error {
     #[error(transparent)]
     Git(#[from] GitError),
 
-    #[error("cannot use the current directory as a workspace: {source}")]
+    /// The io error names the path, so the message only has to say what to do about it.
+    #[error("cannot use the workspace (set QEET_WORKSPACE to choose a different folder)")]
     Workspace {
         #[source]
         source: std::io::Error,

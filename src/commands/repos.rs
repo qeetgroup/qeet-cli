@@ -24,7 +24,7 @@ pub async fn run(args: &crate::cli::ProductArgs) -> Result<(), Error> {
         dim(match product.group_dir() {
             Some(dir) => format!("{} repositories, into {dir}/", product.repositories.len()),
             None =>
-                format!("{} repositories, into the current directory", product.repositories.len()),
+                format!("{} repositories, into the workspace itself", product.repositories.len()),
         })
     );
     let _ = writeln!(out);

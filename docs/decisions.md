@@ -113,6 +113,10 @@ everything as 128.
 
 ## ADR-006 — Flat workspace layout
 
+**Superseded twice.** 0.2.0 grouped each product under its own directory
+(`qeet-id/qeet-id-server`), and [ADR-019](#adr-019--a-fixed-workspace-at-qg-not-the-current-directory)
+replaced "the current directory" with a fixed workspace. Kept for the reasoning.
+
 `qeet clone id` clones into the current directory with no product directory in between.
 
 Chosen by product decision. It is safe here because repository names are unique across the
@@ -396,11 +400,42 @@ silently reconciled.
 
 ---
 
+## ADR-019 — A fixed workspace at `~/QG`, not the current directory
+
+Every command resolves the workspace the same way, first match wins: `QEET_WORKSPACE`, then
+`QG` in the home directory. The current directory is no longer consulted.
+
+**Why not the current directory.** It made the workspace an accident of where a terminal
+happened to be. `qeet clone id` from inside a repository nested twelve more into it;
+`qeet pull` only worked after remembering to `cd` to the right place; and no two developers'
+layouts matched, so no document could say where a repository is. ADR-006 accepted the
+scattering risk because preflight never overwrites — true, but it only made the mistake
+safe, not unlikely.
+
+**Why not the Desktop.** It was the first proposal, and it is where the reference workspace
+lived. But macOS (iCloud "Desktop & Documents") and Windows (OneDrive Known Folder Move,
+standard on managed laptops) both commonly sync the Desktop, and a synced `.git` directory is
+slow at best and corrupted at worst — while `node_modules` and `target` get uploaded too. The
+home directory is never synced by default, and is where comparable tools (`~/go`, `ghq`'s
+`~/ghq`) put code.
+
+**Why an environment variable and not a flag.** The override is a property of the machine,
+set once, not of an invocation. A flag on every command would be four more promises to keep
+for something nobody wants to type each time. An empty value is treated as unset, matching
+`QEET_MANIFEST`, and a leading `~` is expanded because Windows shells and quoted values never
+expand it.
+
+**Only `clone` creates it.** `status` and `pull` treat a missing workspace as one with nothing
+cloned in it, and leave the disk alone: a read must not have side effects.
+
+Home directory resolution is `std::env::home_dir` (via `etcetera`), which reads `HOME` on Unix
+and `USERPROFILE` on Windows — not redirected by OneDrive, which is the point.
+
 ## Deliberately deferred
 
-Not built, and not to be built until `qeet clone` is excellent: `qeet status`, `pull`, `sync`,
-`graph`, `dev`; dependency graphs; a remote registry; a Qeet backend or web dashboard;
+Not built, and not to be built until what exists is excellent: `qeet sync`, `graph`, `dev`; dependency graphs; a remote registry; a Qeet backend or web dashboard;
 telemetry; secrets management; shell completions; a Homebrew tap; JSON output; multi-SCM
 support; and any form of build or CI orchestration.
 
-The architecture leaves room for the first few. That is not a commitment to build them.
+`qeet status` shipped in 0.2.0, and `pull` as another name for `update`, with `all`, after it.
+The architecture leaves room for the next few. That is not a commitment to build them.
