@@ -71,7 +71,7 @@ pub async fn run<G: GitClient>(
     let started = Instant::now();
 
     let names: Vec<String> = job.plans.iter().map(|plan| plan.name.clone()).collect();
-    renderer.begin(&job.product_name, manifest_note, &names);
+    renderer.begin(&job.product_name, &job.root, manifest_note, &names);
 
     // Entries that need no git process are settled up front, so the concurrency budget is
     // spent only on real work.

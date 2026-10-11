@@ -18,10 +18,16 @@ impl Plain {
 }
 
 impl Renderer for Plain {
-    fn begin(&self, product_name: &str, manifest_note: Option<&str>, repositories: &[String]) {
+    fn begin(
+        &self,
+        product_name: &str,
+        root: &std::path::Path,
+        manifest_note: Option<&str>,
+        repositories: &[String],
+    ) {
         let mut err = std::io::stderr().lock();
         let _ = writeln!(err, "qeet clone: {product_name}");
-        let _ = writeln!(err, "{} repositories", repositories.len());
+        let _ = writeln!(err, "{} repositories into {}", repositories.len(), root.display());
         if let Some(note) = manifest_note {
             let _ = writeln!(err, "manifest: {note}");
         }

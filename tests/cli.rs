@@ -78,10 +78,10 @@ fn a_product_argument_is_required() {
     Fixture::new().qeet().arg("clone").assert().code(EXIT_USAGE);
 }
 
-/// Guards the v1 scope boundary. These verbs are deliberately not implemented.
+/// Guards the scope boundary. These verbs are deliberately not implemented.
 #[test]
 fn the_deferred_subcommands_do_not_exist() {
-    for absent in ["status", "pull", "sync", "graph", "dev"] {
+    for absent in ["sync", "graph", "dev"] {
         Fixture::new().qeet().arg(absent).assert().code(EXIT_USAGE);
     }
 }
@@ -277,6 +277,111 @@ fn update_reports_a_repository_that_was_never_cloned() {
         .assert()
         .success()
         .stdout(contains("not cloned"));
+}
+
+/// The whole point of `all`: one command, every product, each one actually advanced.
+#[test]
+fn pull_all_fast_forwards_every_product_in_one_run() {
+    let fixture = Fixture::new();
+    let alpha = fixture.bare_repo("alpha", &[]);
+    let beta = fixture.bare_repo("beta", &[]);
+    let manifest = fixture
+        .manifest_with(&[("one", &[("alpha", alpha.clone())]), ("two", &[("beta", beta.clone())])]);
+
+    fixture.qeet().args(["clone", "all", "--manifest"]).arg(&manifest).assert().success();
+    fixture.push_commit(&alpha, "alpha-news.txt");
+    fixture.push_commit(&beta, "beta-news.txt");
+
+    fixture
+        .qeet()
+        .args(["pull", "all", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success()
+        .stdout(contains("Product one"))
+        .stdout(contains("Product two"))
+        .stdout(contains("fast-forwarded 1 commit(s)"))
+        .stdout(contains("2 products"))
+        .stdout(contains("updated 2"));
+
+    assert!(fixture.path("alpha").join("alpha-news.txt").exists(), "alpha must be advanced");
+    assert!(fixture.path("beta").join("beta-news.txt").exists(), "beta must be advanced");
+}
+
+/// Naming products picks exactly those: the one left out must not be touched.
+#[test]
+fn update_with_several_products_touches_only_those_named() {
+    let fixture = Fixture::new();
+    let alpha = fixture.bare_repo("alpha", &[]);
+    let beta = fixture.bare_repo("beta", &[]);
+    let gamma = fixture.bare_repo("gamma", &[]);
+    let manifest = fixture.manifest_with(&[
+        ("one", &[("alpha", alpha.clone())]),
+        ("two", &[("beta", beta.clone())]),
+        ("three", &[("gamma", gamma.clone())]),
+    ]);
+
+    fixture.qeet().args(["clone", "all", "--manifest"]).arg(&manifest).assert().success();
+    for (url, file) in [(&alpha, "a.txt"), (&beta, "b.txt"), (&gamma, "g.txt")] {
+        fixture.push_commit(url, file);
+    }
+
+    fixture
+        .qeet()
+        .args(["update", "one", "three", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success()
+        .stdout(contains("2 products"))
+        .stdout(predicates::str::contains("Product two").not());
+
+    assert!(fixture.path("alpha").join("a.txt").exists());
+    assert!(fixture.path("gamma").join("g.txt").exists());
+    assert!(!fixture.path("beta").join("b.txt").exists(), "an unnamed product must not move");
+}
+
+/// A product never cloned here is one name in a list under `all`, not a block of noise.
+#[test]
+fn pull_all_folds_products_that_were_never_cloned() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_with(&[
+        ("one", &[("alpha", fixture.bare_repo("alpha", &[]))]),
+        ("two", &[("beta", fixture.bare_repo("beta", &[]))]),
+    ]);
+
+    fixture.qeet().args(["clone", "one", "--manifest"]).arg(&manifest).assert().success();
+
+    fixture
+        .qeet()
+        .args(["pull", "all", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success()
+        .stdout(contains("Product one"))
+        .stdout(contains("Not cloned in"))
+        .stdout(contains(": two. `qeet clone <product>`"))
+        .stdout(predicates::str::contains("Product two").not());
+}
+
+/// A typo among several products must stop the run before any repository is touched.
+#[test]
+fn an_unknown_product_among_several_changes_nothing() {
+    let fixture = Fixture::new();
+    let alpha = fixture.bare_repo("alpha", &[]);
+    let manifest = fixture.manifest_with(&[("one", &[("alpha", alpha.clone())])]);
+
+    fixture.qeet().args(["clone", "one", "--manifest"]).arg(&manifest).assert().success();
+    fixture.push_commit(&alpha, "news.txt");
+
+    fixture
+        .qeet()
+        .args(["pull", "one", "nope", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .code(EXIT_CONFIG)
+        .stderr(contains("Unknown product: nope"));
+
+    assert!(!fixture.path("alpha").join("news.txt").exists(), "nothing may move on a typo");
 }
 
 #[test]

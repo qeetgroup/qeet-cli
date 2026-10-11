@@ -26,9 +26,16 @@ use crate::clone::report::{Outcome, Report, RepositoryReport};
 /// Implementations are called from several tasks at once, hence `Send + Sync` and shared
 /// references throughout.
 pub trait Renderer: Send + Sync {
-    /// Once, before any repository is touched. `manifest_note` names the manifest in
-    /// effect when it is not the one built into the binary.
-    fn begin(&self, product_name: &str, manifest_note: Option<&str>, repositories: &[String]);
+    /// Once, before any repository is touched. `root` is the workspace being cloned into,
+    /// shown because it no longer depends on where qeet was run. `manifest_note` names the
+    /// manifest in effect when it is not the one built into the binary.
+    fn begin(
+        &self,
+        product_name: &str,
+        root: &std::path::Path,
+        manifest_note: Option<&str>,
+        repositories: &[String],
+    );
 
     /// A repository's clone is starting.
     fn repository_started(&self, name: &str);
@@ -171,7 +178,14 @@ pub struct Silent;
 
 #[cfg(test)]
 impl Renderer for Silent {
-    fn begin(&self, _product_name: &str, _note: Option<&str>, _repositories: &[String]) {}
+    fn begin(
+        &self,
+        _product_name: &str,
+        _root: &std::path::Path,
+        _note: Option<&str>,
+        _repositories: &[String],
+    ) {
+    }
     fn repository_started(&self, _name: &str) {}
     fn repository_retrying(&self, _name: &str, _attempt: u32, _reason: &str) {}
     fn repository_finished(&self, _entry: &RepositoryReport) {}

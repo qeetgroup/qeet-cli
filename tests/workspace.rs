@@ -10,10 +10,9 @@ use predicates::str::contains;
 
 const EXIT_INCOMPLETE: i32 = 1;
 
-/// The flat layout: repositories land directly in the current directory, with no product
-/// directory in between.
+/// The flat layout: a product with no directory lands directly in the workspace.
 #[test]
-fn repositories_land_directly_in_the_current_directory() {
+fn repositories_land_directly_in_the_workspace() {
     let fixture = Fixture::new();
     let manifest = fixture.manifest_for(
         "demo",
@@ -219,4 +218,88 @@ fn a_custom_path_is_idempotent() {
         .assert()
         .success()
         .stdout(contains("Already present: 1"));
+}
+
+// ---------------------------------------------------------------------------------------
+// Where the workspace is.
+// ---------------------------------------------------------------------------------------
+
+/// With nothing set, the workspace is `QG` in the home directory -- not wherever qeet runs.
+#[test]
+fn the_default_workspace_is_qg_in_the_home_directory() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_for("demo", &[("alpha", fixture.bare_repo("alpha", &[]))]);
+
+    fixture
+        .qeet()
+        .env_remove("QEET_WORKSPACE")
+        // What `std::env::home_dir` reads on Windows; `HOME` is already faked for Unix.
+        .env("USERPROFILE", fixture.home())
+        .args(["clone", "demo", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success();
+
+    assert!(fixture.home().join("QG/alpha/.git").exists(), "should land in ~/QG");
+    assert!(!fixture.path("alpha").exists(), "the current directory must not be used");
+}
+
+/// `QEET_WORKSPACE` moves it, and a first clone creates it, however deep.
+#[test]
+fn qeet_workspace_moves_it_and_the_first_clone_creates_it() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_for("demo", &[("alpha", fixture.bare_repo("alpha", &[]))]);
+    let elsewhere = fixture.outside("elsewhere/nested");
+
+    fixture
+        .qeet()
+        .env("QEET_WORKSPACE", &elsewhere)
+        .args(["clone", "demo", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .success();
+
+    assert!(elsewhere.join("alpha/.git").exists(), "should land in QEET_WORKSPACE");
+    assert!(!fixture.path("alpha").exists(), "the current directory must not be used");
+}
+
+/// Only `clone` creates the workspace. Looking at one that does not exist yet is not an
+/// error -- nothing is cloned in it -- and must not create it as a side effect.
+#[test]
+fn looking_at_a_missing_workspace_reports_and_creates_nothing() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_for("demo", &[("alpha", fixture.bare_repo("alpha", &[]))]);
+    let missing = fixture.outside("not-yet");
+
+    for command in ["status", "update", "pull"] {
+        fixture
+            .qeet()
+            .env("QEET_WORKSPACE", &missing)
+            .args([command, "demo", "--manifest"])
+            .arg(&manifest)
+            .assert()
+            .success()
+            .stdout(contains("not cloned"));
+    }
+    assert!(!missing.exists(), "a read must not create the workspace");
+}
+
+/// A workspace that cannot be created is one clear startup error that names the path.
+#[test]
+fn a_workspace_that_cannot_be_created_is_a_clear_error() {
+    let fixture = Fixture::new();
+    let manifest = fixture.manifest_for("demo", &[("alpha", fixture.bare_repo("alpha", &[]))]);
+    let file = fixture.outside("a-file");
+    std::fs::write(&file, "in the way").expect("write");
+
+    fixture
+        .qeet()
+        .env("QEET_WORKSPACE", &file)
+        .args(["clone", "demo", "--manifest"])
+        .arg(&manifest)
+        .assert()
+        .code(3)
+        .stderr(contains("cannot use the workspace"))
+        .stderr(contains("QEET_WORKSPACE"))
+        .stderr(contains("a-file"));
 }

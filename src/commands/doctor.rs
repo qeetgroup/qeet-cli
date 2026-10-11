@@ -13,6 +13,7 @@ use crate::error::Error;
 use crate::git::Git;
 use crate::manifest::source;
 use crate::output::style::{bad, dim, heading, ok, symbol, warn};
+use crate::workspace;
 
 enum Verdict {
     Pass(String),
@@ -70,20 +71,8 @@ pub async fn run(args: &crate::cli::ManifestArgs) -> Result<bool, Error> {
         },
     ));
 
-    // 4. can we write where we are standing?
-    checks.push((
-        "workspace",
-        match std::env::current_dir() {
-            Ok(dir) => match writable(&dir) {
-                true => Verdict::Pass(format!("{} is writable", dir.display())),
-                false => Verdict::Fail(
-                    format!("{} is not writable", dir.display()),
-                    "Change to a directory you own before cloning.".into(),
-                ),
-            },
-            Err(err) => Verdict::Fail(err.to_string(), "Change to a valid directory.".into()),
-        },
-    ));
+    // 4. where do repositories go, and can we write there?
+    checks.push(("workspace", workspace_check()));
 
     // 5 and 6 depend on the manifest, because the host to test is whatever the manifest
     // says -- checking github.com when the manifest points at an SSH alias would test the
@@ -214,6 +203,31 @@ async fn git_version() -> Option<String> {
         .await
         .ok()?;
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Where the workspace is, what chose it, and whether clone could write there.
+fn workspace_check() -> Verdict {
+    let fix = format!("Set {} to a folder you own.", workspace::ENV_VAR);
+    let location = match workspace::Location::resolve() {
+        Ok(location) => location,
+        Err(err) => return Verdict::Fail(err.to_string(), fix),
+    };
+    let path = location.path.display();
+    let origin = if location.from_env {
+        format!("from {}", workspace::ENV_VAR)
+    } else {
+        format!("default; set {} to move it", workspace::ENV_VAR)
+    };
+
+    if !location.path.exists() {
+        Verdict::Pass(format!("{path} ({origin}), created by the first clone"))
+    } else if !location.path.is_dir() {
+        Verdict::Fail(format!("{path} is not a directory"), fix)
+    } else if writable(&location.path) {
+        Verdict::Pass(format!("{path} is writable ({origin})"))
+    } else {
+        Verdict::Fail(format!("{path} is not writable"), fix)
+    }
 }
 
 fn writable(dir: &std::path::Path) -> bool {
