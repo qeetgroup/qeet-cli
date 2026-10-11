@@ -42,7 +42,7 @@ it does not replace it, reimplement it, or manage credentials for it.
 
 ```console
 $ qeet clone id
-Qeet ID — 12 repositories
+Qeet ID — 12 repositories into ~/QG
 
   qeet-id-server   ✓ cloned in 3.1s
   qeet-id-console  ✓ cloned in 2.4s
@@ -84,9 +84,9 @@ Qeet ID: 12 of 12 repositories in 5.4s.
 
 ### Scope
 
-v1 does one thing. There is deliberately no `qeet status`, `pull`, `sync`, `graph` or `dev`,
-no dependency graph, no remote registry, no backend service, and no telemetry. See
-[docs/decisions.md](docs/decisions.md) for what is deferred and why.
+Clone, see what is on disk, and keep it current — nothing more. There is deliberately no
+`qeet sync`, `graph` or `dev`, no dependency graph, no remote registry, no backend service,
+and no telemetry. See [docs/decisions.md](docs/decisions.md) for what is deferred and why.
 
 ---
 
@@ -275,7 +275,9 @@ qeet repos id              # which repositories, and where will they land?
 qeet clone id              # clone them, concurrently
 qeet clone all             # every product
 qeet status id             # what is on disk, and how does it compare?
-qeet update id             # fast-forward what can be fast-forwarded
+qeet pull id               # fast-forward what can be fast-forwarded
+qeet pull id pay notify    # several products at once
+qeet pull all              # every product
 qeet doctor                # can this machine actually use qeet?
 qeet self-update           # update the CLI itself
 ```
@@ -287,10 +289,16 @@ qeet self-update           # update the CLI itself
 | `status <product>` | no | Per repository: branch, clean/dirty, ahead/behind, or not cloned |
 | `doctor` | no | Checks git, the manifest in effect, workspace writability, and whether your git identity can actually reach the configured remote |
 | `clone <product>` | creates | Clones what is missing. Never overwrites or deletes anything existing |
-| `update <product>` | **modifies** | Fast-forwards only what is unambiguous. Skips and names everything else |
+| `update <product>...` | **modifies** | Fast-forwards only what is unambiguous. Skips and names everything else. Also spelled `pull`; takes several products, or `all` |
 | `self-update` | no | Works out how qeet was installed and tells you the one command to run |
 
-### `qeet update` is deliberately timid
+### `qeet pull` is deliberately timid
+
+`qeet pull` and `qeet update` are the same command — use whichever you reach for. Give it
+one product, several (`qeet pull id pay`), or `all`. Repositories are fetched in one bounded
+pool across every product named, and each product's results are printed, in order, as soon
+as that product is done. A product with nothing cloned is listed in one line at the end
+rather than as a block of "not cloned".
 
 It is the only command that changes an existing repository, so it advances one **only** when
 the outcome is unambiguous: clean, on a branch, tracking an upstream, nothing unpushed, and
@@ -300,8 +308,8 @@ than creating a merge commit, so `update` cannot invent history or leave a confl
 Everything else is skipped and named:
 
 ```console
-$ qeet update id
-Qeet ID
+$ qeet pull id
+Qeet ID  ~/QG/qeet-id
 
   qeet-id-server   ✓ fast-forwarded 3 commit(s)
   qeet-id-console  ! skipped: 2 uncommitted changes
@@ -314,7 +322,8 @@ Qeet ID
   Skipped repositories were left exactly as they were. Resolve them by hand.
 ```
 
-Use `--dry-run` to see what it would do without fetching or merging anything.
+Use `--dry-run` to see what it would do without fetching or merging anything. Because it does
+not fetch, "already up to date" in a dry run means up to date with what you last fetched.
 
 ### Options
 
@@ -359,19 +368,40 @@ Available products:
 
 ## Workspace layout
 
-**Flat.** `qeet clone id` clones into the current directory, with no product directory in
-between:
+**One folder, `~/QG`, wherever you run qeet from** — `/Users/<you>/QG` on macOS,
+`/home/<you>/QG` on Linux, `C:\Users\<you>\QG` on Windows. `qeet clone` creates it the first
+time; `status` and `pull` only look, and never create it. Inside, each product's repositories
+are grouped under the product's directory:
 
 ```text
-~/projects/qg/
-├── qeet-id-server/
-├── qeet-id-console/
-├── qeet-id-login/
-└── ...
+~/QG/
+├── qeet-id/
+│   ├── qeet-id-server/
+│   ├── qeet-id-console/
+│   └── ...
+├── qeet-pay/
+│   └── ...
+├── qeet-docs/        # organization-level repositories stay at the top
+└── qeet-apis/
 ```
 
-Repository names are unique across the Qeet Group organization, so a flat layout cannot
-collide within a product or between two products.
+Because the location does not depend on your current directory, `qeet pull all` works from
+anywhere, and a clone run from the wrong directory cannot scatter repositories into it.
+
+**Want it somewhere else?** Set `QEET_WORKSPACE` once, in your shell profile:
+
+```bash
+export QEET_WORKSPACE=~/code/qg                  # macOS / Linux: ~/.zshrc or ~/.bashrc
+setx QEET_WORKSPACE "D:\code\qg"                 # Windows, then open a new terminal
+```
+
+A leading `~` is understood even where no shell expanded it. `qeet doctor` prints the
+workspace in effect and what chose it.
+
+> [!NOTE]
+> The default is the home folder rather than the Desktop on purpose: macOS (iCloud) and
+> Windows (OneDrive) commonly sync the Desktop, and syncing a `.git` directory is a reliable
+> way to make repositories slow or corrupt them.
 
 ### What happens when something is already there
 
@@ -664,6 +694,14 @@ own, Qeet CLI cannot see or suppress that. Cancel with `Ctrl-C` and check your h
 </details>
 
 <details>
+<summary><b>Everything says <code>not cloned</code>, but the repositories are on disk</b></summary>
+
+They are not in the workspace qeet is looking at. Every command prints the folder it is
+using; `qeet doctor` shows it too. Either move the repositories into `~/QG`, or point qeet at
+where they already are — for example `export QEET_WORKSPACE=~/Desktop/QG`.
+</details>
+
+<details>
 <summary><b>Which manifest am I using?</b></summary>
 
 Qeet CLI prints `manifest: …` whenever it is *not* using the built-in registry. No such line
@@ -774,9 +812,9 @@ detail in **[docs/releasing.md](docs/releasing.md)**.
 
 ## Future scope
 
-The architecture leaves room for `qeet status`, `pull`, `sync` and a remote registry — the
-manifest is already data-driven and the git adapter is already a trait. **None of them is
-implemented, and none should be until `qeet clone` is excellent.**
+The architecture leaves room for `qeet sync` and a remote registry — the manifest is already
+data-driven and the git adapter is already a trait. **Neither is implemented, and neither
+should be until what exists is excellent.**
 
 ---
 

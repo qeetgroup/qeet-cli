@@ -51,8 +51,18 @@ impl Default for Interactive {
 }
 
 impl Renderer for Interactive {
-    fn begin(&self, product_name: &str, manifest_note: Option<&str>, repositories: &[String]) {
-        let _ = self.multi.println(format!("{product_name} — {} repositories", repositories.len()));
+    fn begin(
+        &self,
+        product_name: &str,
+        root: &std::path::Path,
+        manifest_note: Option<&str>,
+        repositories: &[String],
+    ) {
+        let _ = self.multi.println(format!(
+            "{product_name} — {} repositories into {}",
+            repositories.len(),
+            root.display()
+        ));
         if let Some(note) = manifest_note {
             let _ = self.multi.println(format!("manifest: {note}"));
         }
@@ -204,7 +214,12 @@ mod tests {
 
         let renderer = Interactive::new();
         let names = vec!["qeet-id-server".to_string(), "qeet-id-console".to_string()];
-        renderer.begin("Qeet ID", Some("--manifest /tmp/products.toml"), &names);
+        renderer.begin(
+            "Qeet ID",
+            std::path::Path::new("/home/dev/QG"),
+            Some("--manifest /tmp/products.toml"),
+            &names,
+        );
 
         renderer.repository_started("qeet-id-server");
         renderer.repository_retrying("qeet-id-server", 1, "The connection to the remote failed.");
@@ -235,7 +250,7 @@ mod tests {
     #[test]
     fn an_unknown_repository_is_ignored_rather_than_panicking() {
         let renderer = Interactive::new();
-        renderer.begin("Qeet ID", None, &[]);
+        renderer.begin("Qeet ID", std::path::Path::new("/home/dev/QG"), None, &[]);
         renderer.repository_started("never-registered");
         renderer.repository_retrying("never-registered", 1, "reason");
         renderer.repository_finished(&RepositoryReport {

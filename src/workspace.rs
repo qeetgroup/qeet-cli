@@ -1,9 +1,9 @@
 //! Where repositories go, and whether it is safe to put them there.
 //!
-//! The layout is flat: `qeet clone id` from `~/projects/qg` produces
-//! `~/projects/qg/qeet-id-server/`, `~/projects/qg/qeet-id-console/`, and so on -- no
-//! product directory in between. Repository names are unique across the Qeet Group
-//! organization, so a flat layout cannot collide within a product or between two products.
+//! The workspace is one fixed folder, `~/QG`, whatever directory qeet is run from -- so
+//! `qeet pull all` works from anywhere, and every developer's layout is the same.
+//! [`ENV_VAR`] moves it. Within it, a product's repositories are grouped under the
+//! product's directory: `~/QG/qeet-id/qeet-id-server/`.
 //!
 //! Every destination is classified *before* any git process starts. Nothing that already
 //! exists is ever deleted or overwritten, and when this module cannot establish what a
@@ -11,13 +11,77 @@
 
 use std::ffi::OsString;
 use std::fmt;
+use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use crate::git::{self, GitClient};
 use crate::manifest::{Manifest, Product};
 use crate::remote::{self, Protocol, UrlMatch};
 
-/// The directory `qeet clone` writes into: the current directory, resolved.
+/// The workspace folder in the home directory, unless [`ENV_VAR`] says otherwise.
+///
+/// The home directory rather than the Desktop: macOS (iCloud) and Windows (OneDrive) both
+/// commonly sync the Desktop, and syncing a `.git` directory is how repositories get slow
+/// and corrupted.
+pub const DEFAULT_DIRECTORY: &str = "QG";
+
+/// Set to put the workspace somewhere other than `~/QG`.
+pub const ENV_VAR: &str = "QEET_WORKSPACE";
+
+/// Where the workspace is, and what decided that.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Location {
+    pub path: PathBuf,
+    /// Chosen by [`ENV_VAR`] rather than being the default.
+    pub from_env: bool,
+}
+
+impl Location {
+    /// The workspace location for this process.
+    pub fn resolve() -> io::Result<Self> {
+        locate(std::env::var_os(ENV_VAR), etcetera::home_dir().ok(), std::env::current_dir)
+    }
+}
+
+/// [`Location::resolve`], with the environment passed in so it can be tested.
+fn locate(
+    env: Option<OsString>,
+    home: Option<PathBuf>,
+    current_dir: impl FnOnce() -> io::Result<PathBuf>,
+) -> io::Result<Location> {
+    // Empty is treated as unset, as an empty `QEET_MANIFEST` is, rather than as "here".
+    if let Some(value) = env.filter(|value| !value.is_empty()) {
+        let path = expand_home(PathBuf::from(value), home.as_deref());
+        let path = if path.is_absolute() { path } else { current_dir()?.join(path) };
+        return Ok(Location { path, from_env: true });
+    }
+
+    let home = home.ok_or_else(|| {
+        io::Error::new(io::ErrorKind::NotFound, "cannot find your home directory")
+    })?;
+    Ok(Location { path: home.join(DEFAULT_DIRECTORY), from_env: false })
+}
+
+/// `~` means the home directory even where no shell expanded it: a quoted
+/// `QEET_WORKSPACE="~/code/qg"`, or Windows, where no shell ever does.
+fn expand_home(path: PathBuf, home: Option<&Path>) -> PathBuf {
+    let mut components = path.components();
+    match (components.next(), home) {
+        (Some(Component::Normal(first)), Some(home)) if first == "~" => {
+            let rest = components.as_path();
+            if rest.as_os_str().is_empty() { home.to_path_buf() } else { home.join(rest) }
+        }
+        _ => path,
+    }
+}
+
+/// An I/O error that names its path. The workspace is no longer simply "here", so an
+/// error that does not say where would leave the developer guessing.
+fn naming(path: &Path, err: io::Error) -> io::Error {
+    io::Error::new(err.kind(), format!("{}: {err}", path.display()))
+}
+
+/// The directory repositories are cloned into, resolved.
 #[derive(Debug, Clone)]
 pub struct Workspace {
     root: PathBuf,
@@ -133,9 +197,25 @@ pub struct Plan {
 }
 
 impl Workspace {
-    /// The workspace rooted at the current directory.
-    pub fn discover() -> std::io::Result<Self> {
-        Self::at(std::env::current_dir()?)
+    /// The workspace, created first if it does not exist yet. For `clone`, which writes
+    /// into it.
+    pub fn create() -> io::Result<Self> {
+        let location = Location::resolve()?;
+        std::fs::create_dir_all(&location.path)
+            .and_then(|()| Self::at(&location.path))
+            .map_err(|err| naming(&location.path, err))
+    }
+
+    /// The workspace as it is, for the commands that act only on what is already there.
+    ///
+    /// A workspace that does not exist yet is not an error -- it is one with nothing cloned
+    /// in it -- and looking at it must not create it.
+    pub fn discover() -> io::Result<Self> {
+        let location = Location::resolve()?;
+        match Self::at(&location.path) {
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Self { root: location.path }),
+            other => other.map_err(|err| naming(&location.path, err)),
+        }
     }
 
     /// A workspace rooted at an explicit directory.
@@ -752,5 +832,68 @@ repositories = [{ name = "repo" }]
         for plan in &plans {
             assert_eq!(plan.destination.parent(), Some(workspace.root()));
         }
+    }
+
+    // -- where the workspace is --------------------------------------------------------
+
+    /// An absolute path on this platform: Windows needs a drive for `/srv` to be absolute.
+    fn abs(path: &str) -> PathBuf {
+        PathBuf::from(if cfg!(windows) { format!("C:{path}") } else { path.to_string() })
+    }
+
+    fn home() -> Option<PathBuf> {
+        Some(abs("/home/dev"))
+    }
+
+    fn unused_cwd() -> io::Result<PathBuf> {
+        panic!("an absolute or default location must not consult the current directory")
+    }
+
+    #[test]
+    fn defaults_to_qg_in_the_home_directory_wherever_qeet_runs() {
+        let location = locate(None, home(), unused_cwd).expect("should resolve");
+        assert_eq!(location, Location { path: abs("/home/dev/QG"), from_env: false });
+    }
+
+    #[test]
+    fn the_environment_variable_moves_it() {
+        let location = locate(Some(abs("/srv/code").into()), home(), unused_cwd).expect("resolve");
+        assert_eq!(location, Location { path: abs("/srv/code"), from_env: true });
+    }
+
+    #[test]
+    fn an_empty_variable_is_treated_as_unset() {
+        let location = locate(Some("".into()), home(), unused_cwd).expect("should resolve");
+        assert_eq!(location.path, abs("/home/dev/QG"));
+        assert!(!location.from_env);
+    }
+
+    /// No shell expanded these, so qeet must: a quoted value, or any value on Windows.
+    #[test]
+    fn a_leading_tilde_means_the_home_directory() {
+        for (value, expected) in [("~", "/home/dev"), ("~/code/qg", "/home/dev/code/qg")] {
+            let location = locate(Some(value.into()), home(), unused_cwd).expect("resolve");
+            assert_eq!(location.path, abs(expected), "{value}");
+        }
+        // `~user` is somebody else's home, which qeet does not guess at.
+        let location =
+            locate(Some("~bob/qg".into()), home(), || Ok(PathBuf::from("/cwd"))).expect("resolve");
+        assert_eq!(location.path, PathBuf::from("/cwd/~bob/qg"));
+    }
+
+    #[test]
+    fn a_relative_variable_is_resolved_against_the_current_directory() {
+        let location =
+            locate(Some("work".into()), home(), || Ok(PathBuf::from("/cwd"))).expect("resolve");
+        assert_eq!(location.path, PathBuf::from("/cwd/work"));
+    }
+
+    #[test]
+    fn no_home_directory_is_an_error_unless_the_variable_is_set() {
+        let err = locate(None, None, unused_cwd).expect_err("nowhere to put it");
+        assert!(err.to_string().contains("home directory"), "{err}");
+
+        let location = locate(Some(abs("/srv/code").into()), None, unused_cwd).expect("resolve");
+        assert_eq!(location.path, abs("/srv/code"));
     }
 }

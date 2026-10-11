@@ -98,6 +98,40 @@ impl Fixture {
         ))
     }
 
+    /// A manifest for several flat products, each built from `(name, url)` pairs. Product
+    /// `one` is named `Product one`, so each product's heading can be told apart.
+    pub fn manifest_with(&self, products: &[(&str, &[(&str, String)])]) -> PathBuf {
+        let mut body = String::from(
+            "schema = 1\n\
+             [remote]\n\
+             host = \"example.invalid\"\n\
+             owner = \"fixture\"\n\
+             protocol = \"https\"\n",
+        );
+        for (product, repositories) in products {
+            let entries = repositories
+                .iter()
+                .map(|(name, url)| format!("  {{ name = \"{name}\", url = \"{url}\" }},\n"))
+                .collect::<String>();
+            body.push_str(&format!(
+                "[products.{product}]\n\
+                 name = \"Product {product}\"\n\
+                 repositories = [\n{entries}]\n"
+            ));
+        }
+        self.manifest(&body)
+    }
+
+    /// Land a new commit on a bare remote's `main`, the way a teammate pushing would.
+    pub fn push_commit(&self, url: &str, file: &str) {
+        let teammate = self.root.path().join(format!("teammate-{file}"));
+        git(self.root.path(), &["clone", "--quiet", url]).arg(&teammate).assert_ok();
+        std::fs::write(teammate.join(file), "from a teammate\n").expect("write");
+        git(&teammate, &["add", "-A"]).assert_ok();
+        git(&teammate, &["commit", "--quiet", "-m", "teammate change"]).assert_ok();
+        git(&teammate, &["push", "--quiet", "origin", "main"]).assert_ok();
+    }
+
     /// `qeet`, run from the workspace directory, fully isolated from the developer's machine.
     ///
     /// Isolation is not optional here. qeet's manifest precedence includes a user config
@@ -107,6 +141,9 @@ impl Fixture {
     pub fn qeet(&self) -> Command {
         let mut command = Command::cargo_bin("qeet").expect("qeet binary should be built");
         command.current_dir(&self.work);
+        // The workspace no longer follows the current directory, and its default is in the
+        // home directory -- so name it, or every test would clone into the fake home's `QG`.
+        command.env("QEET_WORKSPACE", &self.work);
 
         command.env_remove("QEET_MANIFEST");
         // Point every platform's config-directory root at a directory that has no config in
@@ -123,6 +160,16 @@ impl Fixture {
     pub fn is_cloned(&self, name: &str) -> bool {
         let path = self.work.join(name);
         path.join(".git").exists() && path.join("README.md").exists()
+    }
+
+    /// The fake home directory every `qeet` invocation is given.
+    pub fn home(&self) -> PathBuf {
+        self.root.path().join("fake-home")
+    }
+
+    /// A path inside the fixture but outside the workspace, not created.
+    pub fn outside(&self, name: &str) -> PathBuf {
+        self.root.path().join(name)
     }
 
     pub fn path(&self, name: &str) -> PathBuf {

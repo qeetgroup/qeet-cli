@@ -46,7 +46,7 @@ pub async fn run(args: &crate::cli::ProductArgs) -> Result<bool, Error> {
         out,
         "{}  {}",
         heading(&ctx.product.name),
-        dim(ctx.product.group_dir().map_or_else(|| ".".to_string(), |d| format!("{d}/")))
+        dim(context::product_dir(&ctx.workspace, &ctx.product).display())
     );
     if let Some(note) = &ctx.note {
         let _ = writeln!(out, "{}", dim(format!("manifest: {note}")));

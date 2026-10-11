@@ -53,6 +53,9 @@ enum Command {
     Status(ProductArgs),
 
     /// Fast-forward a product's repositories, skipping anything ambiguous.
+    ///
+    /// `qeet pull` is the same command under the name git users reach for first.
+    #[command(visible_alias = "pull")]
     Update(UpdateArgs),
 
     /// Check that this machine can actually use qeet.
@@ -89,11 +92,13 @@ pub struct ProductArgs {
 
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
-    /// Product key, e.g. `id`. Run `qeet products` to list them.
-    #[arg(value_name = "PRODUCT")]
-    pub product: String,
+    /// Products to update, e.g. `id`, `id pay notify` -- or `all` for every product.
+    #[arg(value_name = "PRODUCT", required = true)]
+    pub products: Vec<String>,
 
-    /// Maximum number of repositories to work on at once.
+    /// Maximum number of repositories to work on at once, across every product.
+    ///
+    /// Defaults to the machine's available parallelism, capped at 8.
     #[arg(long, value_name = "N", value_parser = parse_concurrency)]
     pub concurrency: Option<NonZeroUsize>,
 
@@ -299,12 +304,12 @@ mod tests {
         assert!(err.to_string().contains("ssh"), "should list the choices: {err}");
     }
 
-    /// The scope boundary, restated now that the platform commands exist. `pull`, `sync`,
-    /// `graph`, `dev` and `init` are still deliberately absent -- `update` covers pulling,
-    /// and the rest were never agreed.
+    /// The scope boundary, restated now that the platform commands exist. `sync`, `graph`,
+    /// `dev` and `init` are still deliberately absent; `pull` exists only as another name
+    /// for `update`.
     #[test]
     fn the_deferred_subcommands_still_do_not_exist() {
-        for absent in ["pull", "sync", "graph", "dev", "init"] {
+        for absent in ["sync", "graph", "dev", "init"] {
             assert!(Cli::try_parse_from(["qeet", absent]).is_err(), "`{absent}` must not exist");
         }
     }
@@ -318,6 +323,10 @@ mod tests {
             vec!["qeet", "update", "id"],
             vec!["qeet", "update", "id", "--dry-run"],
             vec!["qeet", "update", "id", "--concurrency", "4"],
+            vec!["qeet", "update", "all"],
+            vec!["qeet", "update", "id", "pay", "notify"],
+            vec!["qeet", "pull", "id"],
+            vec!["qeet", "pull", "all", "--dry-run"],
             vec!["qeet", "doctor"],
             vec!["qeet", "self-update"],
             vec!["qeet", "clone", "all"],
@@ -336,7 +345,7 @@ mod tests {
     /// The commands that need a product must demand one.
     #[test]
     fn product_arguments_are_required_where_they_matter() {
-        for bare in ["repos", "status", "update"] {
+        for bare in ["repos", "status", "update", "pull"] {
             assert!(
                 Cli::try_parse_from(["qeet", bare]).is_err(),
                 "`{bare}` must require a product"
@@ -345,6 +354,29 @@ mod tests {
         // These two take no product at all.
         assert!(Cli::try_parse_from(["qeet", "products"]).is_ok());
         assert!(Cli::try_parse_from(["qeet", "doctor"]).is_ok());
+    }
+
+    /// `pull` is not a second command that could drift: it parses to exactly `update`.
+    #[test]
+    fn pull_is_update_under_another_name() {
+        let cli =
+            Cli::try_parse_from(["qeet", "pull", "id", "pay", "--dry-run"]).expect("should parse");
+        let Command::Update(args) = cli.command else {
+            panic!("`pull` must be the update subcommand");
+        };
+        assert_eq!(args.products, ["id", "pay"]);
+        assert!(args.dry_run);
+    }
+
+    #[test]
+    fn update_takes_several_products_in_the_order_given() {
+        let cli = Cli::try_parse_from(["qeet", "update", "pay", "id", "--concurrency", "2"])
+            .expect("should parse");
+        let Command::Update(args) = cli.command else {
+            panic!("expected the update subcommand");
+        };
+        assert_eq!(args.products, ["pay", "id"]);
+        assert_eq!(args.concurrency, NonZeroUsize::new(2));
     }
 
     #[test]
